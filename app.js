@@ -540,7 +540,48 @@ function renderHome() {
     `<div class="region"><h3>${r}</h3><div class="chips">${list.map(ko => chip(destByKo(ko), POPULAR.includes(ko))).join('')}</div></div>`).join('')}</section>`;
 
   $('#main').innerHTML = html;
+  $$('.carousel').forEach(dragScroll);
   showCoverCredits();
+}
+// 스크롤바 없이 좌우로 밀어서 넘기기. 터치는 브라우저의 기본 밀기를 쓰고, 마우스는 끌어서 넘김
+function dragScroll(el) {
+  let down = false, dragged = false, startX = 0, startLeft = 0, lastX = 0, lastT = 0, speed = 0, settle;
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    clearTimeout(settle);
+    down = true; dragged = false; speed = 0;
+    startX = lastX = e.clientX; startLeft = el.scrollLeft; lastT = e.timeStamp;
+  });
+  el.addEventListener('pointermove', e => {
+    if (!down) return;
+    if (!(e.buttons & 1)) return release(e);   // 화면 밖에서 버튼을 놓은 경우
+    const dx = e.clientX - startX;
+    if (!dragged) {
+      if (Math.abs(dx) < 8) return;            // 조금 흔들린 것은 클릭으로
+      dragged = true; el.classList.add('dragging'); el.setPointerCapture(e.pointerId);
+    }
+    el.scrollLeft = startLeft - dx;
+    speed = (e.clientX - lastX) / Math.max(1, e.timeStamp - lastT); lastX = e.clientX; lastT = e.timeStamp;
+  });
+  function release(e) {
+    if (!down) return;
+    down = false;
+    if (!dragged) return;
+    // 놓은 속도만큼 더 나아간 위치에서 가장 가까운 카드에 맞춤
+    const flick = e.timeStamp - lastT < 80 ? Math.max(-1.5, Math.min(1.5, speed)) * 120 : 0;   // 최대 180px(카드 한 장 이내)
+    const goal = el.scrollLeft - flick;
+    const max = el.scrollWidth - el.clientWidth, first = el.firstElementChild.offsetLeft;
+    const target = [...el.children].map(c => Math.min(max, c.offsetLeft - first))
+      .reduce((a, b) => Math.abs(b - goal) < Math.abs(a - goal) ? b : a);
+    el.scrollTo({ left: target, behavior: 'smooth' });
+    settle = setTimeout(() => el.classList.remove('dragging'), 500);
+    setTimeout(() => { dragged = false; });
+  }
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('dragstart', e => e.preventDefault());
+  // 끌어서 넘긴 직후의 클릭은 여행지 열기로 보지 않음
+  el.addEventListener('click', e => { if (dragged) { e.preventDefault(); e.stopPropagation(); } }, true);
 }
 // 첫 화면 표지 사진 출처: 카드 모서리에 작성자·라이선스
 async function showCoverCredits() {

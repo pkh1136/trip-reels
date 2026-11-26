@@ -157,7 +157,12 @@ button.chip:hover{border-color:var(--accent);color:var(--accent-ink)} button.chi
 .sec-h{font-size:19px;letter-spacing:-.01em;margin-bottom:12px}
 .region{margin-bottom:18px}
 .region h3{font-size:14px;color:var(--muted);font-weight:600;margin-bottom:8px}
-.carousel{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;scrollbar-width:thin}
+.carousel{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding-bottom:8px;scrollbar-width:none;cursor:grab;user-select:none}
+.carousel::-webkit-scrollbar{display:none}
+.carousel .cover{cursor:inherit}
+.carousel img{-webkit-user-drag:none}
+.carousel.dragging{cursor:grabbing;scroll-snap-type:none}   /* 끄는 동안에는 카드 맞춤을 잠시 끔 */
+.carousel.dragging .cover,.carousel.dragging .cover-img{transform:none}
 .cover-item{display:flex;scroll-snap-align:start}   /* 목록 항목(listitem) 안에 버튼을 두어 스크린리더가 버튼으로 읽게 */
 .cover-item>.cover{width:100%}
 .cover{position:relative;aspect-ratio:4/5;border:0;border-radius:var(--radius);overflow:hidden;scroll-snap-align:start;text-align:left;background:var(--soft2);box-shadow:var(--shadow);transition:transform .2s}
