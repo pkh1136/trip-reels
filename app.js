@@ -138,6 +138,7 @@ function syncForm() {
   $('#paxBtn').textContent = parts.join(' · ');
 }
 function searchChanged() {
+  if (sharedPlan) sharedPlan.backup = null;   // 직접 바꾼 검색 조건은 공유받은 일정을 닫아도 유지
   saveS(); syncForm();
   if (current) { renderTravel(); renderInfo(); renderPlan(); }
 }
@@ -468,7 +469,7 @@ const CHECKS = ['여권 유효기간 (6개월 이상)', '비자·입국 서류',
    ========================================================= */
 let current = null, curAp = null;
 function setURL(push) {
-  const u = new URL(location.href); u.hash = '';
+  const u = new URL(location.href); u.hash = sharedPlan?.hash || '';   // 공유받은 일정은 새로고침해도 다시 보이게
   u.search = current ? (current.custom ? `?q=${enc(current.ko)}` : `?d=${current.slug}${curAp && curAp !== current.aps[0] ? '&ap=' + curAp.code : ''}`) : '';
   history[push ? 'pushState' : 'replaceState'](null, '', u);
 }
@@ -486,8 +487,18 @@ function route() {
   const p = new URLSearchParams(location.search);
   const legacy = decodeURIComponent(location.hash.slice(1));   // 예전 주소(#일본) 호환
   const d = p.get('d') && (destBySlug(p.get('d')) || findDest(p.get('d')));
-  const ap = p.get('ap') || new URLSearchParams(location.hash.slice(1)).get('ap');   // 국가 페이지(/japan/#ap=KIX)에서 넘어온 공항
-  if (d) return render(d, null, { push: false, ap });
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const ap = hash.get('ap') || p.get('ap');   // 국가 페이지(/japan/#ap=KIX)에서 넘어온 공항
+  if (d) {
+    const sh = hash.has('p') ? readShare(d, ap, hash) : null;
+    endShared();
+    if (sh) startShared(sh);
+    render(d, null, { push: false, ap, shared: !!sh });
+    // 공유받은 일정은 화면 위쪽 내용이 그려진 뒤 일정 위치로 이동
+    if (sh) setTimeout(() => $('#sec-plan')?.scrollIntoView({ behavior: 'smooth' }), 900);
+    else if (hash.has('p')) toast('일정 링크를 읽지 못했어요');
+    return;
+  }
   if (p.get('q')) return render(p.get('q'), null, { push: false });
   if (legacy && !['main', 'top'].includes(legacy) && !legacy.startsWith('sec-')) return render(legacy, null, { push: false });
   renderHome();
@@ -499,7 +510,7 @@ addEventListener('popstate', route);
    ========================================================= */
 const chip = (d, hot) => `<button type="button" class="chip" data-go="${d.ko}">${d.flagImg}${d.ko}${hot ? '<span class="hot">HOT</span>' : ''}</button>`;
 function renderHome() {
-  current = null; curAp = null; stopVideos();
+  endShared(); current = null; curAp = null; stopVideos();
   document.title = '트립릴스 · 여행지 영상 미리보기';
   setCanonical('');
   const m = new Date().getMonth() + 1;
@@ -571,6 +582,7 @@ function bindTripCard() {
 const SECTIONS = [['spots', '🎬 명소'], ['info', '📋 정보'], ['plan', '🗓 일정'], ['food', '🍜 먹거리'], ['flights', '✈️ 항공'], ['hotels', '🏨 호텔'], ['more', '🎟 투어·준비']];
 function render(q, word, opts = {}) {
   hideSuggest(); $$('.pop').forEach(p => p.hidden = true); stopVideos();
+  if (!opts.shared) endShared();
   const d = typeof q === 'object' ? q : findDest(q);
   if (d) {
     current = d;
@@ -639,11 +651,11 @@ function saveTrip() {
   $('#tripSave').textContent = '✓ 내 여행';
   toast(`${t.city} 여행을 저장했어요 · 첫 화면에서 D-${Math.max(0, dday(t.d1))}와 체크리스트를 볼 수 있어요`);
 }
-async function share() {
-  const url = shareURL(), title = `${current.ko} 여행 · 트립릴스`;
+const share = () => shareLink(shareURL(), `${current.ko} 여행 · 트립릴스`, `${current.ko} 명소를 영상으로 미리 보기`, '링크를 복사했어요');
+async function shareLink(url, title, text, done) {
   try {
-    if (navigator.share) return await navigator.share({ title, text: `${current.ko} 명소를 영상으로 미리 보기`, url });
-    await navigator.clipboard.writeText(url); toast('링크를 복사했어요');
+    if (navigator.share) return await navigator.share({ title, text, url });
+    await navigator.clipboard.writeText(url); toast(done);
   } catch (e) { if (e?.name !== 'AbortError') prompt('아래 링크를 복사하세요', url); }
 }
 
@@ -1116,10 +1128,12 @@ function renderCalc() {
 const FLIGHT_DEFAULT = { arr: '14:00', dep: '14:00' };
 const ARRIVE_LEAD = 120;    // 도착 후 입국 심사·시내 이동·숙소까지 걸리는 시간(분)
 const DEPART_LEAD = 180;    // 출발 몇 분 전에 시내에서 공항으로 나서는지
-const flightTimes = () => ({ ...FLIGHT_DEFAULT, ...store.get('flights', {})[curAp.code] });
+const flightTimes = () => ({ ...FLIGHT_DEFAULT, ...(sharedHere() ? sharedHere().flights : store.get('flights', {})[curAp.code]) });
 const toMin = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const exactTime = m => { const v = (m + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };   // 항공편 시각은 반올림하지 않음
 function setFlightTime(key, value) {
+  const sv = sharedHere();
+  if (sv) { sv.flights = { ...sv.flights, [key]: value }; return renderPlan(); }   // 공유받은 일정을 보는 중에는 저장하지 않음
   const all = store.get('flights', {});
   all[curAp.code] = { ...all[curAp.code], [key]: value };
   store.set('flights', all); renderPlan();
@@ -1144,7 +1158,7 @@ function fitsDay(list, start, end, center) {
 
 // 직접 편집한 일정: 도착 공항별로 날짜마다 명소 이름을 순서대로 저장. 저장한 것이 없으면 추천 일정
 let planEditing = null, planLists = [];   // 편집 중인 공항 코드 · 화면에 보이는 날짜별 명소 이름
-const savedPlan = () => store.get('plans', {})[curAp.code];
+const savedPlan = () => sharedHere()?.lists || store.get('plans', {})[curAp.code];
 function savePlan(lists) {
   const all = store.get('plans', {});
   if (lists) all[curAp.code] = lists; else delete all[curAp.code];
@@ -1177,12 +1191,70 @@ $('#main').addEventListener('click', e => {
   } else if (act === 'reset') {   // 실수로 지우지 않도록 두 번 눌러야 초기화
     if (b.dataset.sure) { savePlan(null); toast('추천 일정으로 되돌렸어요'); }
     else { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 편집한 내용이 지워져요'; }
-  } else editPlan(act, b.dataset.spot);
+  } else if (act === 'share') shareLink(planURL(), `${current.ko} 여행 일정 · 트립릴스`, `${cityOf(curAp)} 여행 일정을 확인해 보세요`, '일정 링크를 복사했어요');
+  else if (act === 'keep') keepShared(b);
+  else if (act === 'close') closeShared();
+  else editPlan(act, b.dataset.spot);
 });
 $('#main').addEventListener('change', e => {
   const s = e.target.closest('#planBody select[data-act]'); if (!s || s.value === '') return;
   if (s.dataset.act === 'add') editPlan('add', s.value, +s.dataset.day); else editPlan('day', s.dataset.spot, +s.value);
 });
+
+/* ---------- 일정 공유 링크: 여행 날짜·항공 시각·날짜별 명소를 주소의 # 뒤에 담음 (서버로 전송되지 않음) ---------- */
+let sharedPlan = null;   // 링크로 받아 보고 있는 일정. 저장하기 전에는 브라우저에 남기지 않음
+const sharedHere = () => sharedPlan && curAp && sharedPlan.code === curAp.code ? sharedPlan : null;
+// 명소 이름을 짧은 코드로 (FNV-1a). 데이터에서 명소 순서가 바뀌어도 같은 코드
+const spotId = name => { let h = 2166136261; for (const ch of name) h = Math.imul(h ^ ch.codePointAt(0), 16777619); return (h >>> 0).toString(36); };
+function planURL() {
+  const ft = flightTimes();
+  const q = new URLSearchParams({
+    ap: curAp.code,
+    d: (S.trip === 'oneway' ? [S.d1] : [S.d1, S.d2]).map(ymd).join('-'),
+    f: `${ft.arr}-${ft.dep}`.replace(/:/g, ''),
+    p: planLists.map(l => l.map(spotId).join('.')).join('-')
+  });
+  return `${SITE}${current.info.slug ? current.info.slug + '/' : '?d=' + current.slug}#${q}`;
+}
+// 받은 링크 읽기. 누구나 고칠 수 있는 값이라 형식을 확인하고, 아는 명소만 받음
+function readShare(d, apCode, q) {
+  const ap = d.aps.find(a => a.code === apCode) || d.aps[0];
+  const dates = /^(\d{8})(?:-(\d{8}))?$/.exec(q.get('d') || ''), p = q.get('p') || '';
+  const f = /^([01]\d|2[0-3])([0-5]\d)-([01]\d|2[0-3])([0-5]\d)$/.exec(q.get('f') || '');
+  if (!dates || p.length > 800 || !/^[0-9a-z.-]*$/.test(p)) return null;
+  const toDate = v => { const s = `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6)}`; return iso(parseD(s)) === s ? s : null; };
+  let d1 = toDate(dates[1]), d2 = dates[2] ? toDate(dates[2]) : null;
+  if (!d1 || (dates[2] && !(d2 > d1))) return null;
+  const trip = d2 ? 'round' : 'oneway', length = d2 ? Math.round((parseD(d2) - parseD(d1)) / 864e5) : 4;
+  const expired = d1 < today();
+  if (expired) d1 = addDays(today(), 30);   // 지난 날짜는 검색에 쓸 수 없어 같은 길이의 새 날짜로
+  if (expired || !d2) d2 = addDays(d1, length);
+  const byId = new Map(spotsFor(d, ap).map(s => [spotId(s.ko), s.ko]));
+  const ids = p.split('-').slice(0, 10).map(day => day.split('.').filter(Boolean));
+  const lists = ids.map(day => day.map(id => byId.get(id)).filter(Boolean));
+  return {
+    code: ap.code, trip, d1, d2, lists, expired, missing: ids.flat().length - lists.flat().length,
+    flights: f ? { arr: `${f[1]}:${f[2]}`, dep: `${f[3]}:${f[4]}` } : {}, hash: '#' + q
+  };
+}
+function startShared(sh) {
+  sh.backup = { trip: S.trip, d1: S.d1, d2: S.d2 };   // 닫으면 내 검색 날짜로 되돌림
+  Object.assign(S, { trip: sh.trip, d1: sh.d1, d2: sh.d2 }); sharedPlan = sh; syncForm();
+}
+function endShared() {
+  const sh = sharedPlan; if (!sh) return;
+  sharedPlan = null;
+  if (sh.backup) { Object.assign(S, sh.backup); syncForm(); }
+}
+function closeShared() { endShared(); setURL(false); renderTravel(); renderInfo(); renderPlan(); }
+function keepShared(btn) {
+  const sh = sharedHere(); if (!sh) return;
+  const plans = store.get('plans', {});
+  if (plans[sh.code] && !btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = '한 번 더 누르면 기존 내 일정을 덮어써요'; return; }
+  store.set('plans', { ...plans, [sh.code]: sh.lists });
+  store.set('flights', { ...store.get('flights', {}), [sh.code]: sh.flights });
+  sharedPlan = null; saveS(); setURL(false); renderPlan(); toast('내 일정으로 저장했어요');
+}
 
 function renderPlan() {
   const c = current, box = $('#sec-plan'); if (!box || c.custom) return;
@@ -1225,7 +1297,7 @@ function renderPlan() {
   const outAt = depart - DEPART_LEAD;   // 음수면 전날 밤에 공항으로 이동
   const firstStart = Math.max(arrive + ARRIVE_LEAD, 9 * 60);
   const endBy = i => !hasReturn ? Infinity : i === days - 1 ? outAt : i === days - 2 && outAt < 0 ? outAt + 1440 : Infinity;
-  const saved = savedPlan(), custom = Array.isArray(saved), editing = planEditing === curAp.code;
+  const sv = sharedHere(), saved = savedPlan(), custom = Array.isArray(saved), editing = !sv && planEditing === curAp.code;
   if (custom) {   // 직접 편집한 순서 그대로 (여행 일수가 줄면 넘치는 명소는 '더 둘러볼 곳'으로)
     const byName = new Map(all.map(s => [s.ko, s]));
     plan.forEach((p, i) => {
@@ -1269,7 +1341,8 @@ function renderPlan() {
     let t = first ? firstStart : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first && firstStart > 13.5 * 60, dinner = false;
     const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? '🍜 점심' : '🍽 저녁'}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
     if (first) rows.push({ kind: 'note', time: arrive, exact: true, text: `✈ ${curAp.name} 도착 · 입국 심사 후 ${area} ${arrive < 13 * 60 ? '숙소에 짐 맡기기' : '숙소 체크인'}${arrive + ARRIVE_LEAD >= 21 * 60 ? ' · 늦은 도착이라 첫날은 쉬어 가요' : ''}` });
-    if (p.g) rows.push({ kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` });
+    const tripNote = p.g ? { kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` } : null;
+    if (tripNote) rows.push(tripNote);
     p.list.forEach((s, k) => {
       const before = { n: rows.length, t, lunch, dinner, foodIdx };
       const m = spotMeta(s), mv = travel(prev, spotGeo(s)), mvMin = mv?.min || 0;
@@ -1298,6 +1371,7 @@ function renderPlan() {
       row.warn = late ? '공항에 가야 하는 시각을 넘겨요' : t > 23 * 60 ? '밤 11시 이후에 끝나요' : '';
       prev = spotGeo(s) || prev; kept.push(s);
     });
+    if (tripNote && !kept.length) rows.splice(rows.indexOf(tripNote), 1);   // 근교 명소를 하나도 못 넣었으면 출발 안내도 뺌
     // 일정이 일찍 끝나면 점심 → 맛집 거리·시장 자유 시간으로 채움
     const streets = cityFood(curAp).street;
     if (!lunch && t <= 14.5 * 60 && Math.max(t, 12 * 60) + 60 <= limit) { t = Math.max(t, 12 * 60); meal('lunch'); }
@@ -1313,7 +1387,7 @@ function renderPlan() {
     if (hasReturn && outAt < 0 && i === days - 2) rows.push({ kind: 'note', time: outAt + 1440, exact: true, text: `✈ ${curAp.name}(으)로 이동 · 내일 새벽 ${ft.dep} 출국` });
     if (isLast) rows.push(outAt < 0 ? { kind: 'note', time: depart, exact: true, text: `✈ ${curAp.name} 출국 · 전날 밤에 공항으로 이동` }
       : { kind: 'note', time: outAt, exact: true, text: `✈ ${curAp.name}(으)로 이동 · ${ft.dep} 출국` });
-    return { ...p, list: kept, rows };
+    return { g: kept.length ? p.g : '', list: kept, rows };
   });
   const placed = timeline.flatMap(p => p.list), unplaced = spots.filter(s => !placed.includes(s));
   planLists = timeline.map(p => p.list.map(s => s.ko));
@@ -1341,13 +1415,17 @@ function renderPlan() {
     <div id="planBody"></div>`;
   $$('[data-flight]', box).forEach(el => { if (el !== document.activeElement) el.value = ft[el.dataset.flight]; });
   $('#depField', box).hidden = !hasReturn;
-  const kind = custom ? '내 일정' : '추천 일정';
+  const kind = sv ? '공유받은 일정' : custom ? '내 일정' : '추천 일정';
   $('#planHead', box).innerHTML = `<h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? `${kind} (예시 4일)` : `${nights()}박 ${days}일 ${kind}`}</h3>
-      <small>${custom ? '직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요' : useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
+      <small>${sv ? '링크로 받은 일정이에요' : custom ? '직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요' :useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
   $('#planBody', box).innerHTML = `
-    <div class="plan-tools">
-      <button type="button" class="btn${editing ? '' : ' ghost'}" data-act="toggle" aria-pressed="${editing}">${editing ? '✓ 편집 끝내기' : '✏️ 일정 편집'}</button>
-      ${custom ? '<button type="button" class="btn ghost" data-act="reset">↺ 추천 일정으로 되돌리기</button>' : ''}
+    <div class="plan-tools${sv ? ' shared' : ''}">
+      ${sv ? `<button type="button" class="btn" data-act="keep">💾 내 일정으로 저장</button>
+      <button type="button" class="btn ghost" data-act="close">✕ 내 일정 보기</button>`
+      : `<button type="button" class="btn${editing ? '' : ' ghost'}" data-act="toggle" aria-pressed="${editing}">${editing ? '✓ 편집 끝내기' : '✏️ 일정 편집'}</button>
+      ${custom ? '<button type="button" class="btn ghost" data-act="reset">↺ 추천 일정으로 되돌리기</button>' : ''}`}
+      <button type="button" class="btn ghost" data-act="share">🔗 일정 링크 공유</button>
+      ${sv ? `<p>📩 공유받은 일정을 보고 있어요. 저장하기 전에는 내 일정이 바뀌지 않아요.${sv.expired ? ' 보낸 일정의 날짜가 지나서 날짜를 새로 넣었어요. 위에서 여행 날짜를 골라 주세요.' : ''}${sv.missing ? ` 지금은 목록에 없는 명소 ${sv.missing}곳은 빠졌어요.` : ''}</p>` : ''}
       ${editing ? '<p>▲▼로 순서를 바꾸고, 날짜를 골라 옮기거나 뺄 수 있어요. 시간은 자동으로 다시 계산되고, 편집한 일정은 이 브라우저에 저장돼요.</p>' : ''}
     </div>
     <div class="map-wrap" id="planMapWrap">
@@ -1370,7 +1448,7 @@ function renderPlan() {
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
       ${custom && !placed.length ? '' : `<a class="btn ghost" href="${route(custom ? placed : spots)}" target="_blank" rel="noopener">🗺 Google 지도로 보기</a>`}</div>`;
   $('#planCopy').addEventListener('click', async () => {
-    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${shareURL()}`;
+    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${planURL()}`;
     try { await navigator.clipboard.writeText(t); toast('일정을 복사했어요'); } catch { prompt('아래 내용을 복사하세요', t); }
   });
   drawPlanMap(timeline, center);
@@ -1513,6 +1591,7 @@ function renderTravel() {
 }
 $('#main').addEventListener('click', e => {
   const b = e.target.closest('.ap-pick button'); if (!b || !current?.aps) return;
+  endShared();
   curAp = current.aps.find(a => a.code === b.dataset.ap);
   stopVideos(); setURL(false); renderSpots(); renderTravel(); renderInfo(); renderPlan(); renderFood(); renderMore();   // 명소·일정·날씨·먹거리까지 그 도시 기준으로
   $('.ap-pick button.on')?.focus();
