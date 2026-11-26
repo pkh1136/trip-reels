@@ -289,6 +289,12 @@ section.block{scroll-margin-top:72px;margin-top:40px}
 .tips li::before{content:"✓ ";color:var(--good);font-weight:800}
 
 /* 일정 */
+.flight-times{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.flight-times label{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13.5px;font-weight:700}
+.flight-times label[hidden]{display:none}
+.flight-times label:focus-within{border-color:var(--accent)}
+.flight-times input{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:16px;font-weight:700;min-height:34px}
+.flight-times p{flex-basis:100%;font-size:12.5px;color:var(--muted)}
 .plan{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .day-card{background:var(--soft);border-radius:14px;padding:16px}
 .day-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
@@ -459,6 +465,7 @@ body.noscroll .fab{display:none}   /* 뷰어가 열려 있으면 플로팅 버�
   .grid .state{grid-column:auto}
   .carousel{grid-auto-columns:62%;margin:0 -16px;padding-left:16px;padding-right:16px;scroll-padding:16px}
   .info-grid,.plan{grid-template-columns:1fr}
+  .flight-times label{flex:1 1 100%}
   .kv{grid-template-columns:86px 1fr}
   .wx-day span{font-size:19px}
   .fab-btn span{display:none}

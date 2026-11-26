@@ -1112,6 +1112,36 @@ function renderCalc() {
 }
 
 /* ---------- 추천 일정 (♥ 저장한 명소 우선) ---------- */
+// 항공편 시각(현지)은 도착 공항별로 기억. 넣지 않으면 14시 도착 · 14시 출발로 계산
+const FLIGHT_DEFAULT = { arr: '14:00', dep: '14:00' };
+const ARRIVE_LEAD = 120;    // 도착 후 입국 심사·시내 이동·숙소까지 걸리는 시간(분)
+const DEPART_LEAD = 180;    // 출발 몇 분 전에 시내에서 공항으로 나서는지
+const flightTimes = () => ({ ...FLIGHT_DEFAULT, ...store.get('flights', {})[curAp.code] });
+const toMin = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+const exactTime = m => { const v = (m + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };   // 항공편 시각은 반올림하지 않음
+function setFlightTime(key, value) {
+  const all = store.get('flights', {});
+  all[curAp.code] = { ...all[curAp.code], [key]: value };
+  store.set('flights', all); renderPlan();
+}
+$('#main').addEventListener('input', e => { const k = e.target.dataset?.flight; if (k && e.target.value) setFlightTime(k, e.target.value); });
+$('#main').addEventListener('focusout', e => { const k = e.target.dataset?.flight; if (k && !e.target.value) e.target.value = flightTimes()[k]; });   // 지우다 만 칸은 이전 값으로
+
+const isEvening = s => ['저녁', '야간'].includes(spotMeta(s).slot);
+const bySlot = list => [...list].sort((a, b) => SLOT_ORDER[spotMeta(a).slot] - SLOT_ORDER[spotMeta(b).slot]);
+// 첫날·마지막 날처럼 시간이 제한된 날: start부터 돌아 end 전에 끝낼 수 있는지
+function fitsDay(list, start, end, center) {
+  let t = start, prev = center, lunch = start > 13.5 * 60;
+  for (const s of bySlot(list)) {
+    const m = spotMeta(s), mv = travel(prev, spotGeo(s))?.min || 0;
+    if (!lunch && t >= 11 * 60 && t <= 14.5 * 60) { t += 60; lunch = true; }
+    if (!isEvening(s) && t + mv > 17 * 60) return false;   // 낮 명소는 늦은 오후 이후에 넣지 않음
+    t = Math.max(t + mv, isEvening(s) ? SLOT_START[m.slot] : 0) + m.stay * 60;
+    prev = spotGeo(s) || prev;
+  }
+  return t <= end;
+}
+
 function renderPlan() {
   const c = current, box = $('#sec-plan'); if (!box || c.custom) return;
   // 선택한 도착 도시의 명소만 사용. ♥ 저장한 곳을 먼저 넣고, 남는 날은 추천 명소로 채움
@@ -1124,27 +1154,44 @@ function renderPlan() {
   spots.filter(s => s.g).forEach(s => { const g = groups.find(x => x.g === s.g); g ? g.list.push(s) : groups.push({ g: s.g, list: [s] }); });
   // 첫날(도착)·마지막 날(출국)은 시내 1곳, 사이 날은 시내 2곳과 근교 당일치기를 번갈아 배치
   const plan = Array.from({ length: days }, () => ({ list: [], g: null }));
-  let ni = 0, gi = 0;
+  let gi = 0;
+  const queue = [...near], center = cityCenter(all);
   // 시내 명소 n곳 꺼내기. 테마파크처럼 반나절 이상(6시간+) 걸리는 곳은 그날 하나만
   const takeNear = n => {
     const l = [];
-    while (l.length < n && ni < near.length) {
-      const s = near[ni], long = spotMeta(s).stay >= 6;
+    while (l.length < n && queue.length) {
+      const long = spotMeta(queue[0]).stay >= 6;
       if (long && l.length) break;
-      l.push(s); ni++;
+      l.push(queue.shift());
       if (long) break;
     }
     return l;
   };
+  // 시간 안에 끝낼 수 있는 명소만 순서대로 꺼내기 (못 넣은 곳은 다른 날에 남김)
+  const takeFit = (n, start, end) => {
+    const l = [];
+    for (let k = 0; k < queue.length && l.length < n;) {
+      const long = spotMeta(queue[k]).stay >= 6;
+      if (!(long && l.length) && fitsDay([...l, queue[k]], start, end, center)) { l.push(...queue.splice(k, 1)); if (long) break; }
+      else k++;
+    }
+    return l;
+  };
+  // 항공편 시각에 따른 첫날 시작과 마지막 날 마감. 출발 시각은 귀국일이 일정에 포함될 때만 적용 (편도·10일 초과 제외)
+  const ft = flightTimes(), arrive = toMin(ft.arr), depart = toMin(ft.dep);
+  const hasReturn = S.trip !== 'oneway' && days > 1 && nights() + 1 === days;
+  const outAt = depart - DEPART_LEAD;   // 음수면 전날 밤에 공항으로 이동
+  const firstStart = Math.max(arrive + ARRIVE_LEAD, 9 * 60);
+  const endBy = i => !hasReturn ? Infinity : i === days - 1 ? outAt : i === days - 2 && outAt < 0 ? outAt + 1440 : Infinity;
   if (days === 1) plan[0].list = takeNear(2);
   else {
-    plan[0].list = takeNear(1);
+    plan[0].list = takeFit(firstStart <= 11 * 60 ? 2 : 1, firstStart, Math.min(23 * 60, endBy(0)));
     for (let i = 1; i < days - 1; i++) {
-      const far = gi < groups.length && ((i % 2 === 0) || ni >= near.length);
+      const far = gi < groups.length && ((i % 2 === 0) || !queue.length);
       if (far) { plan[i].g = groups[gi].g; plan[i].list = groups[gi++].list; }
       else plan[i].list = takeNear(2);
     }
-    plan[days - 1].list = takeNear(1);
+    plan[days - 1].list = hasReturn ? takeFit(outAt >= 17 * 60 ? 2 : 1, 9 * 60, outAt) : takeNear(1);
   }
   // 밤(야간) 명소 두 곳이 같은 날 몰리면 밤늦게 끝나므로, 야간 명소가 없는 다른 시내 일정의 낮 명소와 하나를 맞바꿈
   const isLate = s => spotMeta(s).slot === '야간';
@@ -1155,32 +1202,31 @@ function renderPlan() {
     const ai = a.list.indexOf(late.at(-1)), bi = b.list.findLastIndex(s => spotMeta(s).stay < 6);
     [a.list[ai], b.list[bi]] = [b.list[bi], a.list[ai]];
   });
-  const restNear = near.slice(ni), restFar = groups.slice(gi);
   const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n || city;
   const dayLabel = i => { if (S.trip === 'oneway') return `${i + 1}일차`; const d = parseD(addDays(S.d1, i)); return `${i + 1}일차 · ${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
   const route = list => 'https://www.google.com/maps/dir/' + list.map(s => enc(s.en)).join('/');
-  const leave = i => i === days - 1 && days > 1 && S.trip !== 'oneway';
+  const leave = i => hasReturn && i === days - 1;
 
   // 시간표 만들기: 추천 시간대 순서로 정렬 → 이동시간 → 머무는 시간 → 점심·저녁 끼워 넣기
-  const center = cityCenter(all), foods = cityFood(curAp).food;
+  const foods = cityFood(curAp).food, dropped = [];
   let foodIdx = 0;
   const nextFood = () => foods.length ? foods[foodIdx++ % foods.length] : null;
   const timeline = plan.map((p, i) => {
-    const rows = [], first = i === 0, isLast = leave(i);
-    // 첫날: 14시 도착 후 입국 심사·숙소 이동·체크인에 약 2시간 → 16시부터 일정
-    let t = first ? 16 * 60 : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first, dinner = false;
+    const rows = [], first = i === 0, isLast = leave(i), limit = endBy(i), kept = [];
+    // 첫날은 도착 후 입국 심사·숙소 이동을 마친 시각부터 (이른 도착이면 9시부터)
+    let t = first ? firstStart : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first && firstStart > 13.5 * 60, dinner = false;
     const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? '🍜 점심' : '🍽 저녁'}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
-    if (first) rows.push({ kind: 'note', time: 14 * 60, text: `✈ ${curAp.name} 도착 · 입국 심사 후 ${area} 숙소 체크인` });
+    if (first) rows.push({ kind: 'note', time: arrive, exact: true, text: `✈ ${curAp.name} 도착 · 입국 심사 후 ${area} ${arrive < 13 * 60 ? '숙소에 짐 맡기기' : '숙소 체크인'}${arrive + ARRIVE_LEAD >= 21 * 60 ? ' · 늦은 도착이라 첫날은 쉬어 가요' : ''}` });
     if (p.g) rows.push({ kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` });
-    const items = [...p.list].sort((a, b) => SLOT_ORDER[spotMeta(a).slot] - SLOT_ORDER[spotMeta(b).slot]);
-    items.forEach(s => {
+    bySlot(p.list).forEach(s => {
+      const before = { n: rows.length, t, lunch, dinner, foodIdx };
       const m = spotMeta(s), mv = travel(prev, spotGeo(s)), mvMin = mv?.min || 0;
       const free = () => rows.push({ kind: 'free', time: t, text: '☕ 자유 시간 · 쇼핑, 카페, 숙소 휴식' });
       if (!lunch && t >= 11 * 60 && t <= 14.5 * 60) meal('lunch');
       const want = SLOT_START[m.slot];
       // 저녁·야간 명소는 그 시간에 맞춰 출발: 남는 시간엔 점심·자유 시간·저녁을 먼저 넣고, 이동은 그 뒤에
       if ((m.slot === '저녁' || m.slot === '야간') && t + mvMin < want) {
-        if (!lunch && !first && t <= 14.5 * 60) { if (12 * 60 - t >= 90) free(); t = Math.max(t, 12 * 60); meal('lunch'); }
+        if (!lunch && t <= 14.5 * 60) { if (12 * 60 - t >= 90) free(); t = Math.max(t, 12 * 60); meal('lunch'); }
         if (!dinner && want >= 18 * 60 && t <= 18.5 * 60) { if (18 * 60 - t >= 90) free(); t = Math.max(t, 18 * 60); meal('dinner'); }
         if (want - mvMin - t >= 90) free();
         t = Math.max(t, want - mvMin);
@@ -1190,29 +1236,49 @@ function renderPlan() {
       const inside = !lunch && m.stay >= 5 && t < 12 * 60 && t + m.stay * 60 > 13 * 60;
       if (inside) lunch = true;
       rows.push({ kind: 'spot', time: t, spot: s, m, inside });
-      t += Math.round(m.stay * 60); prev = spotGeo(s) || prev;
+      t += Math.round(m.stay * 60);
+      // 공항에 가야 하는 시각을 넘기면 넣기 전 상태로 되돌리고 '더 둘러볼 곳'으로 보냄
+      if (t + (p.g ? travel(spotGeo(s), center)?.min || 0 : 0) > limit) {
+        rows.length = before.n; ({ t, lunch, dinner, foodIdx } = before); dropped.push(s); return;
+      }
+      prev = spotGeo(s) || prev; kept.push(s);
     });
     // 일정이 일찍 끝나면 점심 → 맛집 거리·시장 자유 시간으로 채움
     const streets = cityFood(curAp).street;
-    if (!lunch && !isLast && !first && t <= 14.5 * 60) { t = Math.max(t, 12 * 60); meal('lunch'); }
-    if (!isLast && !p.g && items.length && t < 16 * 60) {   // 근교 날은 그 도시 맛집 거리를 추천하지 않음
+    if (!lunch && t <= 14.5 * 60 && Math.max(t, 12 * 60) + 60 <= limit) { t = Math.max(t, 12 * 60); meal('lunch'); }
+    if (!isLast && !p.g && kept.length && t < 16 * 60) {   // 근교 날은 그 도시 맛집 거리를 추천하지 않음
       const st = streets.length ? streets[i % streets.length] : null;
       rows.push({ kind: 'free', time: t, text: st ? `☕ 자유 시간 · ${st.n} 구경 (${st.d})` : '☕ 자유 시간 · 쇼핑, 카페, 산책' });
       t = 17 * 60;
     }
-    if (p.g) { const back = travel(prev, center); if (back) { rows.push({ kind: 'move', text: back.text.replace(/^(\S+)/, '$1 숙소로') }); t += back.min; } }
-    if (!dinner && !isLast && t <= 22 * 60) { t = Math.max(t, 18.5 * 60); meal('dinner'); }
-    if (!items.length && !first && !isLast) rows.push({ kind: 'free', time: 10 * 60, text: '☕ 자유 일정 · 쇼핑, 맛집, 휴식' });
-    if (isLast) rows.push({ kind: 'note', time: Math.max(t, 11 * 60), text: `✈ ${curAp.name}(으)로 이동 · 출국` });
-    return { ...p, rows };
+    if (p.g && kept.length) { const back = travel(prev, center); if (back) { rows.push({ kind: 'move', text: back.text.replace(/^(\S+)/, '$1 숙소로') }); t += back.min; } }
+    if (isLast && outAt - t >= 90) rows.push({ kind: 'free', time: t, text: t < 12 * 60 ? '🧳 체크아웃 후 짐을 맡기고 근처 산책·쇼핑' : '☕ 공항 가기 전까지 근처 산책·쇼핑' });
+    if (!dinner && t <= 22 * 60 && Math.max(t, 18.5 * 60) + 75 <= limit) { t = Math.max(t, 18.5 * 60); meal('dinner'); }
+    if (!kept.length && !isLast && (first ? firstStart < 17 * 60 : limit === Infinity)) rows.splice(first ? 1 : 0, 0, { kind: 'free', time: first ? firstStart : 10 * 60, text: '☕ 자유 일정 · 쇼핑, 맛집, 휴식' });
+    if (hasReturn && outAt < 0 && i === days - 2) rows.push({ kind: 'note', time: outAt + 1440, exact: true, text: `✈ ${curAp.name}(으)로 이동 · 내일 새벽 ${ft.dep} 출국` });
+    if (isLast) rows.push(outAt < 0 ? { kind: 'note', time: depart, exact: true, text: `✈ ${curAp.name} 출국 · 전날 밤에 공항으로 이동` }
+      : { kind: 'note', time: outAt, exact: true, text: `✈ ${curAp.name}(으)로 이동 · ${ft.dep} 출국` });
+    return { ...p, list: p.list.filter(s => kept.includes(s)), rows };
   });
-  const hm = clock;
+  const rest = [...queue, ...dropped.filter(s => !s.g)].map(s => s.ko)
+    .concat([...new Set([...groups.slice(gi).map(g => g.g), ...dropped.filter(s => s.g).map(s => s.g)])].map(g => `${g}(근교)`));
+  const hm = clock, rowTime = r => r.time == null ? '' : r.exact ? exactTime(r.time) : hm(r.time);
   const nearMap = s => mapLink('restaurants near ' + (s?.en || curAp.en));
   const text = timeline.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}]\n` + p.rows.filter(r => r.kind !== 'move').map(r =>
-    `${r.time != null ? hm(r.time) + ' ' : ''}${r.spot ? r.spot.ko : r.text}`).join('\n')).join('\n\n');
-  box.innerHTML = `
-    <div class="block-title"><h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
-      <small>${useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small></div>
+    `${r.time != null ? rowTime(r) + ' ' : ''}${r.spot ? r.spot.ko : r.text}`).join('\n')).join('\n\n');
+  // 시각 입력칸은 처음 한 번만 만듦 (입력하는 동안 다시 그리면 커서가 사라지므로 제목과 본문만 갱신)
+  if (!$('#planBody', box)) box.innerHTML = `<div class="block-title" id="planHead"></div>
+    <div class="flight-times">
+      <label><span>✈ 현지 도착</span><input type="time" data-flight="arr" required></label>
+      <label id="depField"><span>🛫 귀국편 출발</span><input type="time" data-flight="dep" required></label>
+      <p>항공권에 적힌 현지 시각을 넣으면 일정이 맞춰져요. 도착일은 '가는 날', 출발일은 '오는 날' 기준이에요. 도착 2시간 뒤부터 움직이고, 출발 3시간 전에 공항으로 가는 것으로 계산해요.</p>
+    </div>
+    <div id="planBody"></div>`;
+  $$('[data-flight]', box).forEach(el => { if (el !== document.activeElement) el.value = ft[el.dataset.flight]; });
+  $('#depField', box).hidden = !hasReturn;
+  $('#planHead', box).innerHTML = `<h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
+      <small>${useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
+  $('#planBody', box).innerHTML = `
     <div class="map-wrap" id="planMapWrap">
       <div class="map-days" role="group" aria-label="지도에 표시할 날짜"><button type="button" class="chip sm on" data-day="all">전체</button>${timeline.map((p, i) =>
         p.rows.some(r => r.spot && spotGeo(r.spot)) ? `<button type="button" class="chip sm" data-day="${i}"><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${i + 1}일차</button>` : '').join('')}</div>
@@ -1224,11 +1290,11 @@ function renderPlan() {
         <ol class="tl">${p.rows.map(r => r.kind === 'move' ? `<li class="tl-move">${esc(r.text)}</li>`
           : r.kind === 'spot' ? `<li class="tl-spot${isPicked(r.spot) ? ' picked' : ''}"><span class="tm">${hm(r.time)}</span><div>${isPicked(r.spot) ? '<span class="pk" aria-label="저장한 곳">♥</span> ' : ''}<b>${esc(r.spot.ko)}</b>
               <small>${r.m.stay}시간 · ${esc(r.m.fee)}${r.m.note ? ` · <em>${esc(r.m.note)}</em>` : ''}${r.inside ? ' · 점심은 안에서' : ''}</small></div></li>`
-          : r.kind === 'meal' ? `<li class="tl-meal"><span class="tm">${hm(r.time)}</span><div>${esc(r.text)} <a class="link sm" href="${nearMap(r.near)}" target="_blank" rel="noopener">주변 맛집</a></div></li>`
-          : `<li class="tl-${r.kind}"><span class="tm">${r.time != null ? hm(r.time) : ''}</span><div>${esc(r.text)}</div></li>`).join('')}</ol></div>`).join('')}
+          : r.kind === 'meal' ? `<li class="tl-meal"><span class="tm">${rowTime(r)}</span><div>${esc(r.text)} <a class="link sm" href="${nearMap(r.near)}" target="_blank" rel="noopener">주변 맛집</a></div></li>`
+          : `<li class="tl-${r.kind}"><span class="tm">${rowTime(r)}</span><div>${esc(r.text)}</div></li>`).join('')}</ol></div>`).join('')}
     </div>
     <p class="muted small">⏱ 이동시간은 직선거리로 계산한 대략치이고, 운영시간·요금은 명소 카드의 '지도·운영시간'에서 확인하세요.</p>
-    ${restNear.length || restFar.length ? `<p class="muted small">시간이 되면 더 둘러볼 곳: ${[...restNear.map(s => s.ko), ...restFar.map(g => `${g.g}(근교)`)].map(esc).join(', ')}</p>` : ''}
+    ${rest.length ? `<p class="muted small">시간이 되면 더 둘러볼 곳: ${rest.map(esc).join(', ')}</p>` : ''}
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
       <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 Google 지도로 보기</a></div>`;
   $('#planCopy').addEventListener('click', async () => {
