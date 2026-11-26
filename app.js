@@ -1021,6 +1021,7 @@ function renderInfo() {
       ${c.cur ? `<div class="panel" id="calcBox"><h4>💱 환율 계산기</h4><p class="muted">환율 불러오는 중…</p></div>` : ''}
       ${I.budget ? `<div class="panel" id="budgetBox"><h4>💰 1일 예상 경비 <small class="muted">1인 · 숙박 포함</small></h4>
         <div class="budget" role="group" aria-label="경비 수준 선택">${TIERS.map((l, i) => `<button type="button" class="tier" data-tier="${i}"><small>${l}</small><b>${I.budget[i]}만원</b></button>`).join('')}</div>
+        <label class="own"><b>✏️ 직접 입력</b><span>1인 하루 <input type="number" id="budgetAmt" inputmode="decimal" enterkeyhint="done" min="1" max="${OWN_MAX}" step="any" placeholder="금액" aria-label="1인 하루 희망 경비 (만원)"> 만원</span></label>
         <div class="budget-sum" aria-live="polite"></div></div>` : ''}
       ${I.tips ? `<div class="panel"><h4>💡 현지 꿀팁</h4><ul class="tips">${I.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
         <a class="link" href="https://www.0404.go.kr/" target="_blank" rel="noopener">🛡 외교부 해외안전여행에서 여행경보 확인 →</a></div>` : ''}
@@ -1032,21 +1033,44 @@ function renderInfo() {
   if (current === c) showWeather();
 }
 
-/* ---------- 예상 경비: 알뜰 · 보통 · 여유를 누르면 총액을 다시 계산 (선택은 기억) ---------- */
+/* ---------- 예상 경비: 알뜰·보통·여유를 고르거나 희망 금액을 직접 넣으면 총액을 다시 계산 (선택은 기억) ---------- */
 const TIERS = ['알뜰', '보통', '여유'];
+const OWN_MAX = 10000;   // 직접 입력할 수 있는 1인 하루 최대 금액(만원)
 let budgetTier = TIERS[store.get('tier', 1)] ? store.get('tier', 1) : 1;
+let budgetAmt = +store.get('budgetAmt', 0) || 0;   // 직접 입력한 1인 하루 금액(만원), 0이면 없음
+let budgetOwn = !!store.get('budgetOwn', false);   // true면 직접 입력한 금액으로 계산
+const man = n => n.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
 function renderBudget() {
   const box = $('#budgetBox'), b = current?.info.budget; if (!box || !b) return;
-  const t = budgetTier, days = Math.max(1, nights() || 4), unit = nights() ? '박' : '일', ppl = S.adults + S.children;
-  $$('.tier', box).forEach(btn => { const on = +btn.dataset.tier === t; btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on); });
-  $('.budget-sum', box).innerHTML = `<small>${TIERS[t]} 기준 총 예상 경비</small><b>약 ${(b[t] * days * ppl).toLocaleString()}만원</b>
-    <small>${b[t]}만원 × ${days}${unit} × ${ppl}명${ppl > 1 ? ` (1인 ${(b[t] * days).toLocaleString()}만원)` : ''}</small>
-    <small>항공권${S.infants ? '·유아' : ''} 제외, 대략치</small>`;
+  const own = budgetOwn && budgetAmt > 0, per = own ? budgetAmt : b[budgetTier];
+  const days = Math.max(1, nights() || 4), unit = nights() ? '박' : '일', ppl = S.adults + S.children;
+  $$('.tier', box).forEach(btn => { const on = !own && +btn.dataset.tier === budgetTier; btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on); });
+  $('.own', box).classList.toggle('on', own);
+  const input = $('#budgetAmt'); if (document.activeElement !== input) input.value = budgetAmt || '';   // 입력 중에는 건드리지 않음
+  // 직접 입력한 금액이 이 여행지에서 어느 수준인지 알려줌
+  const level = per < b[0] ? `알뜰(${b[0]}만원)보다 적어 빠듯할 수 있어요` : `이 여행지의 '${TIERS[per >= b[2] ? 2 : per >= b[1] ? 1 : 0]}' 수준이에요`;
+  $('.budget-sum', box).innerHTML = `<small>${own ? '직접 입력한 금액' : TIERS[budgetTier]} 기준 총 예상 경비</small><b>약 ${man(per * days * ppl)}만원</b>
+    <small>${man(per)}만원 × ${days}${unit} × ${ppl}명${ppl > 1 ? ` (1인 ${man(per * days)}만원)` : ''}</small>
+    <small>항공권${S.infants ? '·유아' : ''} 제외, 대략치</small>${own ? `<small class="level">${level}</small>` : ''}`;
+}
+function setBudget(own) {
+  budgetOwn = own;
+  store.set('tier', budgetTier); store.set('budgetAmt', budgetAmt); store.set('budgetOwn', budgetOwn);
+  renderBudget();
 }
 $('#main').addEventListener('click', e => {
   const btn = e.target.closest('.tier[data-tier]'); if (!btn) return;
-  budgetTier = +btn.dataset.tier; store.set('tier', budgetTier); renderBudget();
+  budgetTier = +btn.dataset.tier; setBudget(false);
 });
+$('#main').addEventListener('input', e => {
+  if (e.target.id !== 'budgetAmt') return;
+  const v = parseFloat(e.target.value);
+  budgetAmt = v > 0 ? Math.min(v, OWN_MAX) : 0;
+  if (v > OWN_MAX) e.target.value = OWN_MAX;
+  setBudget(budgetAmt > 0);   // 비우면 고르던 알뜰·보통·여유 기준으로 돌아감
+});
+// 넣어 둔 금액이 있으면 입력칸을 누르는 것만으로 그 금액 기준으로 전환
+$('#main').addEventListener('focusin', e => { if (e.target.id === 'budgetAmt' && budgetAmt) setBudget(true); });
 function renderCalc() {
   const c = current, box = $('#calcBox'); if (!box || !c?._fx) return;
   const unit = fxUnit(c._fx);
