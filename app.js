@@ -121,7 +121,9 @@ function areasFor(d, ap) {
    ========================================================= */
 const S = Object.assign({ from: 'ICN', trip: 'round', adults: 2, children: 0, infants: 0, direct: false, d1: null, d2: null }, store.get('search', {}));
 if (!['ICN', 'GMP'].includes(S.from)) S.from = 'ICN';
-if (!S.d1 || S.d1 < today()) { S.d1 = addDays(today(), 30); S.d2 = addDays(S.d1, 4); }   // 기본: 오늘+30일부터 4박
+// 지난 날짜는 새로 고름. 단, 저장한 여행이 진행 중이면 그 날짜를 유지 (여행 중에 다시 열어도 내 일정이 보이게)
+const ongoing = [...store.get('trips', []), store.get('trip')].some(t => t && t.d1 === S.d1 && (t.d2 === t.d1 ? addDays(t.d1, 3) : t.d2) >= today());   // 편도는 4일간
+if (!S.d1 || (S.d1 < today() && !ongoing)) { S.d1 = addDays(today(), 30); S.d2 = addDays(S.d1, 4); }   // 기본: 오늘+30일부터 4박
 if (!S.d2 || S.d2 <= S.d1) S.d2 = addDays(S.d1, 4);
 const saveS = () => store.set('search', S);
 const nights = () => S.trip === 'oneway' ? 0 : Math.round((parseD(S.d2) - parseD(S.d1)) / 864e5);
@@ -514,13 +516,12 @@ function renderHome() {
   document.title = '트립릴스 · 여행지 영상 미리보기';
   setCanonical('');
   const m = new Date().getMonth() + 1;
-  const trip = store.get('trip'), recent = store.get('recent', []).map(destByKo).filter(Boolean);
+  const recent = store.get('recent', []).map(destByKo).filter(Boolean);
   const saved = getSaved();
   const goodNow = DESTS.filter(d => d.info.best?.includes(m)).slice(0, 10);
   const easy = DESTS.filter(d => /무비자/.test(d.visa) && flightHours(d) < 5).sort((a, b) => flightHours(a) - flightHours(b));
-  let html = '';
+  let html = tripSections();
 
-  if (trip && destByKo(trip.ko) && trip.d2 >= today()) html += tripCard(trip);
   if (recent.length) html += `<section class="home-sec"><h2 class="sec-h">최근 본 여행지</h2><div class="chips">${recent.map(d => chip(d)).join('')}</div></section>`;
   if (saved.length) html += savedSection();
 
@@ -539,7 +540,6 @@ function renderHome() {
     `<div class="region"><h3>${r}</h3><div class="chips">${list.map(ko => chip(destByKo(ko), POPULAR.includes(ko))).join('')}</div></div>`).join('')}</section>`;
 
   $('#main').innerHTML = html;
-  bindTripCard();
   showCoverCredits();
 }
 // 첫 화면 표지 사진 출처: 카드 모서리에 작성자·라이선스
@@ -558,23 +558,88 @@ function savedSection() {
       <div class="chips">${list.map(s => `<span class="chip static">${esc(s)}<button type="button" class="x-sm" data-unsave="${esc(c)}|${esc(s)}" aria-label="${esc(s)} 보관함에서 빼기">×</button></span>`).join('')}</div></div>`;
   }).join('')}</div></section>`;
 }
-function tripCard(t) {
+/* ---------- 저장한 여행 (여러 개) ----------
+   여행: { id, ko, ap, city, trip: 'round'|'oneway', d1, d2, checks }. 일정(plans)·항공 시각(flights)은 여행 id로 저장 */
+const newTripId = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const isOneway = t => t.trip === 'oneway' || t.d2 === t.d1;
+const tripEnd = t => isOneway(t) ? addDays(t.d1, 3) : t.d2;   // 편도는 추천 일정 길이(4일)까지를 여행 중으로
+// 일정·항공 시각을 다른 이름(공항 코드 → 여행 id)으로 옮기거나, to가 없으면 지움
+function moveTripData(from, to) {
+  ['plans', 'flights'].forEach(k => {
+    const all = store.get(k, {}); if (!all[from]) return;
+    if (to) all[to] = all[from];
+    delete all[from]; store.set(k, all);
+  });
+}
+function getTrips() {
+  const list = store.get('trips'); if (Array.isArray(list)) return list;
+  // 예전 버전(여행 하나만 저장)의 기록을 옮김
+  const old = store.get('trip'), d = old && destByKo(old.ko);
+  if (!d) return [];
+  const t = { ...old, id: newTripId(), ap: old.ap || d.aps[0].code, trip: old.d2 === old.d1 ? 'oneway' : 'round' };
+  store.set('trips', [t]);
+  if (store.get('trips')) { moveTripData(t.ap, t.id); store.del('trip'); }   // 새 기록이 저장된 것을 확인한 뒤 정리
+  return [t];
+}
+const sameDates = t => t.trip === S.trip && t.d1 === S.d1 && (t.trip === 'oneway' || t.d2 === S.d2);
+const tripAt = code => getTrips().find(t => t.ap === code && sameDates(t));   // 지금 보는 공항·날짜의 저장한 여행
+const planKey = () => tripAt(curAp.code)?.id || curAp.code;
+const tripDates = t => `${fmtD(t.d1)}${isOneway(t) ? ' 편도' : ' – ' + fmtD(t.d2)}`;
+// 지금 공항·검색 날짜로 새 여행을 저장
+function addTrip() {
+  const t = { id: newTripId(), ko: current.ko, ap: curAp.code, city: cityOf(curAp), trip: S.trip, d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2, checks: {} };
+  store.set('trips', [...getTrips(), t]);
+  return t;
+}
+function updateTrip(id, change) {
+  store.set('trips', getTrips().map(t => t.id === id ? { ...t, ...change } : t));
+}
+// 검색 날짜를 저장한 여행의 날짜로
+function applyTripDates(t) {
+  endShared();
+  Object.assign(S, { trip: t.trip, d1: t.d1, d2: isOneway(t) ? addDays(t.d1, 4) : t.d2 });
+  saveS(); syncForm();
+}
+
+function tripCard(t, open) {
   const d = destByKo(t.ko), n = dday(t.d1), done = CHECKS.filter((_, i) => t.checks?.[i]).length;
-  return `<section class="home-sec trip-card" id="tripCard">
+  return `<div class="trip-card" data-trip-id="${esc(t.id)}">
     <div class="trip-top"><div><span class="dday">${n > 0 ? 'D-' + n : n === 0 ? 'D-DAY' : '여행 중'}</span>
-      <h2>${d.flagImg}${esc(t.city || d.ko)} 여행</h2><p>${fmtD(t.d1)}${t.d2 && t.d2 !== t.d1 ? ' – ' + fmtD(t.d2) : ''}</p></div>
-      <div class="trip-acts"><button type="button" class="btn" data-go="${d.ko}" data-ap="${t.ap || ''}">여행 보기</button><button type="button" class="btn ghost" id="tripDel">삭제</button></div></div>
-    <h3>준비 체크리스트 <small>${done}/${CHECKS.length}</small></h3>
-    <div class="checks">${CHECKS.map((c, i) => `<label class="check-item"><input type="checkbox" data-ci="${i}" ${t.checks?.[i] ? 'checked' : ''}> ${c}</label>`).join('')}</div>
-  </section>`;
+      <h2>${d.flagImg}${esc(t.city || d.ko)} 여행</h2><p>${tripDates(t)}</p></div>
+      <div class="trip-acts"><button type="button" class="btn" data-open-trip="${esc(t.id)}">여행 보기</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">삭제</button></div></div>
+    <details ${open ? 'open' : ''}><summary>준비 체크리스트 <small>${done}/${CHECKS.length}</small></summary>
+      <div class="checks">${CHECKS.map((c, i) => `<label class="check-item"><input type="checkbox" data-ci="${i}" ${t.checks?.[i] ? 'checked' : ''}> ${c}</label>`).join('')}</div></details>
+  </div>`;
 }
-function bindTripCard() {
-  $('#tripDel')?.addEventListener('click', () => { store.del('trip'); toast('내 여행을 삭제했어요'); renderHome(); });
-  $$('#tripCard [data-ci]').forEach(cb => cb.addEventListener('change', () => {
-    const t = store.get('trip'); t.checks = t.checks || {}; t.checks[cb.dataset.ci] = cb.checked; store.set('trip', t);
-    $('#tripCard h3 small').textContent = `${CHECKS.filter((_, i) => t.checks[i]).length}/${CHECKS.length}`;
-  }));
+// 첫 화면: 다가오는 여행은 가까운 순서의 카드(첫 번째만 체크리스트를 펼침), 지난 여행은 한 줄 목록
+function tripSections() {
+  const trips = getTrips().filter(t => destByKo(t.ko)).sort((a, b) => a.d1.localeCompare(b.d1));
+  const next = trips.filter(t => tripEnd(t) >= today()), past = trips.filter(t => tripEnd(t) < today()).reverse();
+  return (next.length ? `<section class="home-sec trips">${next.length > 1 ? `<h2 class="sec-h">✈ 내 여행 ${next.length}개</h2>` : ''}${next.map((t, i) => tripCard(t, i === 0)).join('')}</section>` : '')
+    + (past.length ? `<section class="home-sec"><h2 class="sec-h">🧳 다녀온 여행</h2><div class="past-trips">${past.map(t => `
+      <div class="past-trip">${destByKo(t.ko).flagImg}<b>${esc(t.city || t.ko)}</b><small>${tripDates(t)}</small>
+        <button type="button" class="btn ghost" data-open-trip="${esc(t.id)}">일정 보기</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">삭제</button></div>`).join('')}</div></section>` : '');
 }
+$('#main').addEventListener('click', e => {
+  const open = e.target.closest('[data-open-trip]');
+  if (open) {
+    const t = getTrips().find(x => x.id === open.dataset.openTrip); if (!t) return;
+    applyTripDates(t); $('#q').value = t.ko;
+    return render(destByKo(t.ko), null, { ap: t.ap });
+  }
+  const del = e.target.closest('[data-del-trip]'); if (!del) return;
+  if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = '한 번 더 누르면 삭제'; return; }   // 일정까지 지워지므로 두 번 확인
+  const id = del.dataset.delTrip;
+  store.set('trips', getTrips().filter(t => t.id !== id)); moveTripData(id);
+  toast('여행을 삭제했어요'); renderHome();
+});
+$('#main').addEventListener('change', e => {
+  const cb = e.target.closest('.trip-card [data-ci]'); if (!cb) return;
+  const card = cb.closest('.trip-card'), t = getTrips().find(x => x.id === card.dataset.tripId); if (!t) return;
+  const checks = { ...t.checks, [cb.dataset.ci]: cb.checked };
+  updateTrip(t.id, { checks });
+  $('summary small', card).textContent = `${CHECKS.filter((_, i) => checks[i]).length}/${CHECKS.length}`;
+});
 
 /* =========================================================
    여행지 화면
@@ -598,8 +663,6 @@ function render(q, word, opts = {}) {
   document.title = `${c.ko} 여행 · 트립릴스`;
   setCanonical(c.custom ? '' : '?d=' + c.slug);
   if (!$('#q').value || opts.push === false) $('#q').value = c.ko;
-  const trip = store.get('trip');
-  const isTrip = trip && trip.ko === c.ko;
 
   $('#main').innerHTML = `
     <div class="dest-head">
@@ -608,7 +671,7 @@ function render(q, word, opts = {}) {
         <p>${esc(c.tagline)}</p>
       </div>
       <div class="head-acts">
-        ${c.custom ? '' : `<button type="button" class="btn" id="tripSave">${isTrip ? '✓ 내 여행' : '✈ 내 여행으로 저장'}</button>`}
+        ${c.custom ? '' : '<button type="button" class="btn" id="tripSave">✈ 내 여행으로 저장</button>'}
         <button type="button" class="btn ghost" id="shareBtn">공유</button>
       </div>
     </div>
@@ -646,10 +709,18 @@ function render(q, word, opts = {}) {
 }
 
 function saveTrip() {
-  const t = { ko: current.ko, ap: curAp.code, city: cityOf(curAp), d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2, checks: store.get('trip')?.ko === current.ko ? store.get('trip').checks : {} };
-  store.set('trip', t);
-  $('#tripSave').textContent = '✓ 내 여행';
+  if (sharedHere()) return keepShared($('#tripSave'));   // 공유받은 일정을 보는 중이면 그 일정까지 함께 저장
+  if (tripAt(curAp.code)) return toast('이 날짜의 여행은 이미 저장돼 있어요');
+  const t = addTrip();
+  moveTripData(curAp.code, t.id);   // 저장 전에 편집한 일정·항공 시각은 이 여행의 것
+  renderPlan();
   toast(`${t.city} 여행을 저장했어요 · 첫 화면에서 D-${Math.max(0, dday(t.d1))}와 체크리스트를 볼 수 있어요`);
+}
+// 저장 버튼 문구: 지금 날짜의 여행이 저장돼 있는지에 따라
+function updateTripButton() {
+  const b = $('#tripSave'); if (!b) return;
+  delete b.dataset.sure;
+  b.textContent = !sharedHere() && tripAt(curAp.code) ? '✓ 저장한 여행' : getTrips().some(t => t.ap === curAp.code) ? '✈ 이 날짜로 새 여행 저장' : '✈ 내 여행으로 저장';
 }
 const share = () => shareLink(shareURL(), `${current.ko} 여행 · 트립릴스`, `${current.ko} 명소를 영상으로 미리 보기`, '링크를 복사했어요');
 async function shareLink(url, title, text, done) {
@@ -1124,18 +1195,18 @@ function renderCalc() {
 }
 
 /* ---------- 추천 일정 (♥ 저장한 명소 우선) ---------- */
-// 항공편 시각(현지)은 도착 공항별로 기억. 넣지 않으면 14시 도착 · 14시 출발로 계산
+// 항공편 시각(현지)은 저장한 여행별(저장 전에는 도착 공항별)로 기억. 넣지 않으면 14시 도착 · 14시 출발로 계산
 const FLIGHT_DEFAULT = { arr: '14:00', dep: '14:00' };
 const ARRIVE_LEAD = 120;    // 도착 후 입국 심사·시내 이동·숙소까지 걸리는 시간(분)
 const DEPART_LEAD = 180;    // 출발 몇 분 전에 시내에서 공항으로 나서는지
-const flightTimes = () => ({ ...FLIGHT_DEFAULT, ...(sharedHere() ? sharedHere().flights : store.get('flights', {})[curAp.code]) });
+const flightTimes = () => ({ ...FLIGHT_DEFAULT, ...(sharedHere() ? sharedHere().flights : store.get('flights', {})[planKey()]) });
 const toMin = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const exactTime = m => { const v = (m + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };   // 항공편 시각은 반올림하지 않음
 function setFlightTime(key, value) {
   const sv = sharedHere();
   if (sv) { sv.flights = { ...sv.flights, [key]: value }; return renderPlan(); }   // 공유받은 일정을 보는 중에는 저장하지 않음
-  const all = store.get('flights', {});
-  all[curAp.code] = { ...all[curAp.code], [key]: value };
+  const all = store.get('flights', {}), at = planKey();
+  all[at] = { ...all[at], [key]: value };
   store.set('flights', all); renderPlan();
 }
 $('#main').addEventListener('input', e => { const k = e.target.dataset?.flight; if (k && e.target.value) setFlightTime(k, e.target.value); });
@@ -1156,12 +1227,12 @@ function fitsDay(list, start, end, center) {
   return t <= end;
 }
 
-// 직접 편집한 일정: 도착 공항별로 날짜마다 명소 이름을 순서대로 저장. 저장한 것이 없으면 추천 일정
+// 직접 편집한 일정: 저장한 여행별(저장 전에는 도착 공항별)로 날짜마다 명소 이름을 순서대로 저장. 없으면 추천 일정
 let planEditing = null, planLists = [];   // 편집 중인 공항 코드 · 화면에 보이는 날짜별 명소 이름
-const savedPlan = () => sharedHere()?.lists || store.get('plans', {})[curAp.code];
+const savedPlan = () => sharedHere()?.lists || store.get('plans', {})[planKey()];
 function savePlan(lists) {
-  const all = store.get('plans', {});
-  if (lists) all[curAp.code] = lists; else delete all[curAp.code];
+  const all = store.get('plans', {}), key = planKey();
+  if (lists) all[key] = lists; else delete all[key];
   store.set('plans', all); renderPlan();
 }
 function editPlan(act, name, to) {
@@ -1191,7 +1262,12 @@ $('#main').addEventListener('click', e => {
   } else if (act === 'reset') {   // 실수로 지우지 않도록 두 번 눌러야 초기화
     if (b.dataset.sure) { savePlan(null); toast('추천 일정으로 되돌렸어요'); }
     else { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 편집한 내용이 지워져요'; }
-  } else if (act === 'share') shareLink(planURL(), `${current.ko} 여행 일정 · 트립릴스`, `${cityOf(curAp)} 여행 일정을 확인해 보세요`, '일정 링크를 복사했어요');
+  } else if (act === 'trip-open' || act === 'trip-move') {
+    const t = getTrips().find(x => x.id === b.dataset.id); if (!t) return;
+    if (act === 'trip-open') { applyTripDates(t); renderTravel(); renderInfo(); }
+    else { updateTrip(t.id, { trip: S.trip, d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2 }); toast('여행 날짜를 바꿨어요 · 편집한 일정과 체크리스트는 그대로예요'); }
+    renderPlan();
+  } else if (act === 'share')shareLink(planURL(), `${current.ko} 여행 일정 · 트립릴스`, `${cityOf(curAp)} 여행 일정을 확인해 보세요`, '일정 링크를 복사했어요');
   else if (act === 'keep') keepShared(b);
   else if (act === 'close') closeShared();
   else editPlan(act, b.dataset.spot);
@@ -1247,13 +1323,15 @@ function endShared() {
   if (sh.backup) { Object.assign(S, sh.backup); syncForm(); }
 }
 function closeShared() { endShared(); setURL(false); renderTravel(); renderInfo(); renderPlan(); }
+// 공유받은 일정을 내 여행으로 저장. 같은 날짜의 여행에 편집한 일정이 있을 때만 덮어쓰기를 확인
 function keepShared(btn) {
   const sh = sharedHere(); if (!sh) return;
-  const plans = store.get('plans', {});
-  if (plans[sh.code] && !btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = '한 번 더 누르면 기존 내 일정을 덮어써요'; return; }
-  store.set('plans', { ...plans, [sh.code]: sh.lists });
-  store.set('flights', { ...store.get('flights', {}), [sh.code]: sh.flights });
-  sharedPlan = null; saveS(); setURL(false); renderPlan(); toast('내 일정으로 저장했어요');
+  const mine = tripAt(sh.code);
+  if (mine && store.get('plans', {})[mine.id] && !btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = '한 번 더 누르면 기존 내 일정을 덮어써요'; return; }
+  const t = mine || addTrip();
+  store.set('plans', { ...store.get('plans', {}), [t.id]: sh.lists });
+  store.set('flights', { ...store.get('flights', {}), [t.id]: sh.flights });
+  sharedPlan = null; saveS(); setURL(false); renderPlan(); toast('내 여행으로 저장했어요 · 첫 화면에서 볼 수 있어요');
 }
 
 function renderPlan() {
@@ -1416,11 +1494,18 @@ function renderPlan() {
   $$('[data-flight]', box).forEach(el => { if (el !== document.activeElement) el.value = ft[el.dataset.flight]; });
   $('#depField', box).hidden = !hasReturn;
   const kind = sv ? '공유받은 일정' : custom ? '내 일정' : '추천 일정';
+  // 이 공항에 저장한 여행이 있는데 지금 날짜가 다르면, 그 일정을 보거나 날짜를 옮길 수 있게 안내
+  const mine = tripAt(curAp.code);
+  const otherTrips = sv || mine ? [] : getTrips().filter(t => t.ap === curAp.code && tripEnd(t) >= today()).sort((a, b) => a.d1.localeCompare(b.d1));
+  updateTripButton();
   $('#planHead', box).innerHTML = `<h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? `${kind} (예시 4일)` : `${nights()}박 ${days}일 ${kind}`}</h3>
-      <small>${sv ? '링크로 받은 일정이에요' : custom ? '직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요' :useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
+      <small>${mine && !sv ? '📌 저장한 여행 · ' : ''}${sv ? '링크로 받은 일정이에요' :custom ? '직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요' :useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
   $('#planBody', box).innerHTML = `
+    ${otherTrips.length ? `<div class="plan-trips"><p>📌 ${esc(city)}에 저장한 여행이 있어요. 지금 날짜에는 그 여행의 일정이 적용되지 않아요.</p>${otherTrips.map(t => `
+      <div><b>${tripDates(t)}</b><button type="button" class="btn" data-act="trip-open" data-id="${esc(t.id)}">이 여행 일정 보기</button>
+        <button type="button" class="btn ghost" data-act="trip-move" data-id="${esc(t.id)}">여행 날짜를 지금 날짜로 바꾸기</button></div>`).join('')}</div>` : ''}
     <div class="plan-tools${sv ? ' shared' : ''}">
-      ${sv ? `<button type="button" class="btn" data-act="keep">💾 내 일정으로 저장</button>
+      ${sv ? `<button type="button" class="btn" data-act="keep">💾 내 여행으로 저장</button>
       <button type="button" class="btn ghost" data-act="close">✕ 내 일정 보기</button>`
       : `<button type="button" class="btn${editing ? '' : ' ghost'}" data-act="toggle" aria-pressed="${editing}">${editing ? '✓ 편집 끝내기' : '✏️ 일정 편집'}</button>
       ${custom ? '<button type="button" class="btn ghost" data-act="reset">↺ 추천 일정으로 되돌리기</button>' : ''}`}

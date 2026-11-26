@@ -182,8 +182,17 @@ button.chip:hover{border-color:var(--accent);color:var(--accent-ink)} button.chi
 .trip-card p{color:var(--muted)}
 .dday{display:inline-block;background:var(--accent);color:#fff;font-weight:800;border-radius:8px;padding:2px 10px;font-size:15px}
 .trip-acts{display:flex;gap:6px}
-.trip-card h3{font-size:14px;margin:18px 0 10px}
-.trip-card h3 small{color:var(--accent-ink)}
+.trip-card+.trip-card{margin-top:12px}
+.trip-card summary{font-size:14px;font-weight:700;margin-top:18px;cursor:pointer}
+.trip-card summary small{color:var(--accent-ink)}
+.trip-card details[open] summary{margin-bottom:10px}
+.past-trips{display:grid;gap:8px}
+.past-trip{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;background:var(--soft);border-radius:12px;padding:10px 14px}
+.past-trip small{color:var(--muted);margin-right:auto}
+.plan-trips{display:grid;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.plan-trips p{font-size:13px;font-weight:600}
+.plan-trips div{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.plan-trips b{font-size:13.5px;margin-right:4px}
 .checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
 .check-item{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:10px;padding:9px 12px;font-size:14px;cursor:pointer}
 .check-item input{accent-color:var(--accent);width:17px;height:17px}
