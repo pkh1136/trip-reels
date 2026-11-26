@@ -5,145 +5,147 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>트립릴스 · 여행지 영상 미리보기</title>
 <meta name="description" content="가고 싶은 여행지를 입력하면 주요 명소를 짧은 영상으로 보여주고, 항공편·호텔 검색까지 한 번에.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ff6b4a'/%3E%3Cpath d='M25 19.5v25a1.5 1.5 0 0 0 2.3 1.3l19.5-12.5a1.5 1.5 0 0 0 0-2.6L27.3 18.2a1.5 1.5 0 0 0-2.3 1.3z' fill='%23fff'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#ff6b4a">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
   :root{
-    --bg:#0b0f17; --bg2:#121826; --card:#161d2d; --line:#263049;
-    --text:#eef2fa; --muted:#98a3ba; --accent:#ff6b4a; --accent2:#ffb347; --ok:#4ade80;
-    --radius:18px;
+    --bg:#ffffff; --soft:#f6f8fb; --line:#e8ecf2;
+    --text:#1b2333; --muted:#6b7588; --accent:#ff6b4a; --accent-soft:#fff1ec; --blue:#2f80ed;
+    --radius:16px; --shadow:0 1px 2px #1b233308, 0 6px 20px #1b23330d;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
   a{color:inherit;text-decoration:none}
   button,input,select{font:inherit;color:inherit}
-  .wrap{max-width:1200px;margin:0 auto;padding:0 20px}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 20px}
 
   /* ---------- Hero ---------- */
-  .hero{position:relative;min-height:440px;display:flex;align-items:center;overflow:hidden;border-bottom:1px solid var(--line)}
-  .hero-bg{position:absolute;inset:0;background:radial-gradient(1200px 500px at 15% 0%,#ff6b4a33,transparent 60%),radial-gradient(900px 500px at 90% 100%,#3b82f633,transparent 60%),var(--bg)}
-  .hero-bg video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.2s}
-  .hero-bg video.on{opacity:.35}
-  .hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0b0f1700 30%,var(--bg) 100%)}
-  .hero .wrap{position:relative;z-index:1;width:100%;padding-top:56px;padding-bottom:48px}
-  .logo{font-weight:800;letter-spacing:-.02em;font-size:20px;display:flex;align-items:center;gap:8px;margin-bottom:36px}
-  .logo i{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-style:normal;font-size:15px}
-  h1{font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.03em;font-weight:800}
-  h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .sub{color:var(--muted);margin-top:12px;font-size:17px}
+  .hero{background:linear-gradient(180deg,#fff4ef 0%,#eef6ff 100%)}
+  .hero .wrap{padding-top:28px;padding-bottom:44px}
+  .logo{font-weight:800;letter-spacing:-.02em;font-size:19px;display:inline-flex;align-items:center;gap:8px;margin-bottom:48px;cursor:pointer}
+  .logo i{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-style:normal;font-size:12px}
+  h1{font-size:clamp(28px,4.6vw,46px);line-height:1.2;letter-spacing:-.03em;font-weight:800}
+  h1 em{font-style:normal;color:var(--accent)}
+  .sub{color:var(--muted);margin-top:10px;font-size:16.5px}
 
-  .search{margin-top:28px;background:#ffffff0d;border:1px solid #ffffff1f;backdrop-filter:blur(12px);border-radius:22px;padding:10px;display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr .8fr auto;gap:8px}
-  .field{background:#0b0f17b3;border:1px solid var(--line);border-radius:14px;padding:8px 14px;display:flex;flex-direction:column;min-width:0}
-  .field label{font-size:11.5px;color:var(--muted);font-weight:600}
-  .field input,.field select{background:none;border:0;outline:0;font-size:15.5px;font-weight:600;padding:2px 0;width:100%;color-scheme:dark}
-  .field select option{background:var(--bg2)}
-  .field:focus-within{border-color:var(--accent)}
-  .go{background:linear-gradient(135deg,var(--accent),#ff8f4a);border:0;border-radius:14px;padding:0 26px;font-weight:700;font-size:16px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
-  .go:hover{filter:brightness(1.08);transform:translateY(-1px)}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
-  .chip{background:#ffffff0f;border:1px solid #ffffff1a;border-radius:999px;padding:6px 13px;font-size:13.5px;cursor:pointer;transition:background .15s}
-  .chip:hover{background:#ffffff21}
+  .search{margin-top:28px;background:#fff;border-radius:20px;padding:8px;box-shadow:var(--shadow);display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr .7fr auto;gap:4px}
+  .field{border-radius:12px;padding:8px 14px;display:flex;flex-direction:column;min-width:0;transition:background .15s}
+  .field + .field{border-left:1px solid var(--line);border-radius:0}
+  .field:hover,.field:focus-within{background:var(--soft);border-radius:12px}
+  .field label{font-size:12px;color:var(--muted);font-weight:600}
+  .field input,.field select{background:none;border:0;outline:0;font-size:15.5px;font-weight:600;padding:2px 0;width:100%}
+  .go{background:var(--accent);color:#fff;border:0;border-radius:14px;padding:0 24px;font-weight:700;font-size:16px;cursor:pointer;white-space:nowrap;transition:transform .15s,background .15s}
+  .go:hover{background:#f25a38;transform:translateY(-1px)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:13.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .flag{height:13px;width:auto;border-radius:2px;box-shadow:0 0 0 1px #0000000f}
 
-  /* ---------- Sections ---------- */
+  /* ---------- Browse all ---------- */
   main{padding:40px 0 80px}
-  .empty{text-align:center;color:var(--muted);padding:60px 0}
-  .empty b{display:block;font-size:44px;margin-bottom:8px}
-  .dest-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
-  .dest-head h2{font-size:34px;letter-spacing:-.02em;font-weight:800}
-  .dest-head h2 span{font-size:38px;margin-right:6px}
-  .dest-head p{color:var(--muted);margin-top:4px}
+  .region{margin-bottom:28px}
+  .region h3{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:10px}
+  .region .chips{margin-top:0}
+
+  /* ---------- Destination ---------- */
+  .dest-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+  .dest-head h2{font-size:32px;letter-spacing:-.02em;font-weight:800;display:flex;align-items:center;gap:10px}
+  .dest-head h2 .flag{height:26px}
+  .dest-head p{color:var(--muted);margin-top:2px}
   .facts{display:flex;gap:8px;flex-wrap:wrap}
-  .fact{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13px}
-  .fact b{display:block;font-size:11px;color:var(--muted);font-weight:600}
-  .tabs{display:flex;gap:6px;position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--line)}
-  .tab{padding:8px 16px;border-radius:999px;font-weight:600;font-size:14.5px;color:var(--muted);border:1px solid transparent}
-  .tab:hover{color:var(--text);border-color:var(--line)}
+  .fact{background:var(--soft);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:600}
+  .fact b{display:block;font-size:11px;color:var(--muted);font-weight:500}
+  .tabs{display:flex;gap:4px;position:sticky;top:0;z-index:5;background:#ffffffeb;backdrop-filter:blur(8px);padding:12px 0;border-bottom:1px solid var(--line)}
+  .tab{padding:7px 14px;border-radius:999px;font-weight:600;font-size:14.5px;color:var(--muted)}
+  .tab:hover{color:var(--text);background:var(--soft)}
   section.block{scroll-margin-top:70px;margin-top:36px}
-  .block-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:16px}
-  .block-title h3{font-size:22px;letter-spacing:-.01em}
+  .block-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .block-title h3{font-size:21px;letter-spacing:-.01em}
   .block-title small{color:var(--muted);font-size:13px}
 
   /* ---------- Video grid ---------- */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
-  .vcard{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--card);border:1px solid var(--line);aspect-ratio:9/13;cursor:pointer;isolation:isolate;transition:transform .2s,border-color .2s}
-  .vcard:hover{transform:translateY(-3px);border-color:#3b4767}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+  .vcard{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--soft);aspect-ratio:9/13;cursor:pointer;isolation:isolate;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s}
+  .vcard:hover{transform:translateY(-3px);box-shadow:0 10px 30px #1b23331f}
   .vcard video,.vcard img.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
-  .vcard::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#0000 45%,#000000d9 100%)}
-  .vcard .skeleton{position:absolute;inset:0;z-index:-3;background:linear-gradient(100deg,#161d2d 30%,#1f2840 50%,#161d2d 70%);background-size:300% 100%;animation:sh 1.4s infinite}
+  .vcard::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#0000 50%,#000000b3 100%)}
+  .vcard .skeleton{position:absolute;inset:0;z-index:-3;background:linear-gradient(100deg,#eef1f6 30%,#f8f9fb 50%,#eef1f6 70%);background-size:300% 100%;animation:sh 1.4s infinite}
   @keyframes sh{to{background-position:-150% 0}}
-  .vcard .meta{position:absolute;left:0;right:0;bottom:0;padding:16px}
+  .vcard .meta{position:absolute;left:0;right:0;bottom:0;padding:16px;color:#fff}
   .vcard .meta h4{font-size:18px;font-weight:700;letter-spacing:-.01em}
-  .vcard .meta p{font-size:13px;color:#d3d9e6;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .badge{position:absolute;top:12px;left:12px;background:#000000a0;backdrop-filter:blur(6px);border-radius:999px;font-size:11.5px;padding:4px 9px;font-weight:600}
+  .vcard .meta p{font-size:13px;color:#ffffffd9;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .badge{position:absolute;top:12px;left:12px;background:#ffffffe6;color:var(--text);border-radius:999px;font-size:11.5px;padding:4px 9px;font-weight:600}
   .badge.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;animation:pulse 1.2s infinite}
   @keyframes pulse{50%{opacity:.3}}
-  .next{position:absolute;top:10px;right:10px;background:#000000a0;border:0;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:14px;opacity:0;transition:opacity .2s}
+  .next{position:absolute;top:10px;right:10px;background:#ffffffe6;color:var(--text);border:0;border-radius:999px;width:32px;height:32px;cursor:pointer;font-size:14px;opacity:0;transition:opacity .2s}
   .vcard:hover .next{opacity:1}
-  .yt{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:12.5px;font-weight:600;background:#ff000026;border:1px solid #ff00004d;border-radius:8px;padding:4px 9px}
-  .yt:hover{background:#ff000040}
+  .yt{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:12.5px;font-weight:600;background:#ffffff26;backdrop-filter:blur(4px);border-radius:8px;padding:4px 9px}
+  .yt:hover{background:#ffffff40}
 
   /* ---------- Info cards ---------- */
   .two{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
-  .panel h4{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:12px}
-  .kv{display:grid;grid-template-columns:110px 1fr;gap:10px 14px;font-size:15px}
+  .panel{background:var(--soft);border-radius:var(--radius);padding:22px}
+  .panel h4{font-size:14px;color:var(--muted);font-weight:600;margin-bottom:12px}
+  .kv{display:grid;grid-template-columns:100px 1fr;gap:10px 14px;font-size:15px}
   .kv dt{color:var(--muted)}
   .kv dd{font-weight:600}
-  .route{display:flex;align-items:center;gap:14px;margin-bottom:18px}
-  .route .ap{font-size:30px;font-weight:800;letter-spacing:.02em}
+  .route{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  .route .ap{font-size:28px;font-weight:800;letter-spacing:.02em}
   .route .ap small{display:block;font-size:12px;color:var(--muted);font-weight:500;letter-spacing:0}
-  .route .line{flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 8px,transparent 8px 14px);position:relative}
-  .route .line::after{content:"✈";position:absolute;left:50%;top:50%;transform:translate(-50%,-55%);background:var(--card);padding:0 6px;color:var(--accent2)}
+  .route .line{flex:1;height:2px;background:repeating-linear-gradient(90deg,#cfd6e2 0 8px,transparent 8px 14px);position:relative}
+  .route .line::after{content:"✈";position:absolute;left:50%;top:50%;transform:translate(-50%,-55%);background:var(--soft);padding:0 6px;color:var(--accent)}
   .route .dur{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:var(--muted);white-space:nowrap}
   .links{display:grid;gap:10px}
-  .lnk{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;transition:border-color .15s,background .15s}
-  .lnk:hover{border-color:var(--accent);background:#1a2133}
+  .lnk{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+  .lnk:hover{border-color:var(--accent);box-shadow:var(--shadow)}
   .lnk b{font-size:15.5px}
   .lnk span{font-size:12.5px;color:var(--muted);display:block}
   .lnk .arr{color:var(--accent);font-weight:700}
   .areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-  .area{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .area{background:#fff;border-radius:14px;padding:14px 16px}
   .area b{font-size:16px}
   .area p{font-size:13px;color:var(--muted);margin-top:3px}
   .area .mini{display:flex;gap:6px;margin-top:10px}
   .area .mini a{font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:4px 8px}
-  .area .mini a:hover{border-color:var(--accent)}
+  .area .mini a:hover{border-color:var(--accent);color:var(--accent)}
   .note{font-size:12.5px;color:var(--muted);margin-top:14px}
+  .empty{text-align:center;color:var(--muted);padding:40px 0}
 
   /* ---------- Modal ---------- */
-  .modal{position:fixed;inset:0;background:#000000e0;z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal{position:fixed;inset:0;background:#0f1522d9;z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
   .modal.open{display:flex}
-  .modal-box{width:min(960px,100%);background:var(--bg2);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+  .modal-box{width:min(960px,100%);background:#fff;border-radius:20px;overflow:hidden}
   .modal video{display:block;width:100%;max-height:70vh;background:#000}
   .modal-info{padding:16px 20px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
   .modal-info h4{font-size:19px}
   .modal-info p{font-size:13px;color:var(--muted)}
   .modal-info .acts{display:flex;gap:8px}
-  .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:600;cursor:pointer}
-  .btn:hover{border-color:var(--accent)}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
   .x{position:absolute;top:16px;right:20px;font-size:30px;background:none;border:0;cursor:pointer;color:#fff}
-
-  footer{border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;padding:24px 0;text-align:center}
 
   @media (max-width:900px){
     .search{grid-template-columns:1fr 1fr}
     .search .field.dest{grid-column:1/-1}
+    .field + .field{border-left:0}
     .go{grid-column:1/-1;padding:14px}
     .two{grid-template-columns:1fr}
   }
   @media (max-width:520px){
     .wrap{padding:0 16px}
+    .logo{margin-bottom:28px}
     .grid{grid-template-columns:1fr 1fr;gap:10px}
     .vcard .meta{padding:10px}.vcard .meta h4{font-size:15px}.vcard .meta p{display:none}
-    .dest-head h2{font-size:27px}
-    .kv{grid-template-columns:90px 1fr}
+    .dest-head h2{font-size:26px}
+    .kv{grid-template-columns:86px 1fr}
   }
 </style>
 </head>
 <body>
 
 <header class="hero">
-  <div class="hero-bg"><video id="heroVid" muted loop playsinline></video></div>
   <div class="wrap">
     <div class="logo"><i>▶</i>트립릴스</div>
     <h1>어디로 떠나고 싶으세요?<br><em>명소를 영상으로 먼저 여행하세요</em></h1>
@@ -171,15 +173,12 @@
         <label for="pax">인원</label>
         <select id="pax"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
       </div>
-      <button class="go" type="submit">영상 보기 ▶</button>
+      <button class="go" type="submit">여행 떠나기 ✈</button>
     </form>
-    <div class="chips" id="chips"></div>
   </div>
 </header>
 
-<main class="wrap" id="main">
-  <div class="empty"><b>🌏</b>위에서 여행지를 입력하거나 인기 여행지를 눌러 보세요.</div>
-</main>
+<main class="wrap" id="main"></main>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true">
   <button class="x" id="mClose" aria-label="닫기">×</button>
@@ -192,7 +191,6 @@
   </div>
 </div>
 
-<footer>영상: Wikimedia Commons (각 영상의 라이선스는 원본 페이지에서 확인) · 항공·호텔 가격은 연결된 예약 사이트에서 실시간으로 확인하세요.</footer>
 
 <script>
 /* =========================================================
@@ -398,15 +396,197 @@ const DESTS = [
       {ko:"스핑크스", en:"Great Sphinx of Giza", d:"사자 몸에 사람 얼굴의 거대 석상"},
       {ko:"아부심벨", en:"Abu Simbel", d:"람세스 2세의 거대한 암굴 신전"},
       {ko:"카르나크 신전", en:"Karnak Temple Luxor", d:"134개의 거대 기둥이 선 신전"}],
-    areas:[{n:"기자",d:"피라미드 뷰 호텔"},{n:"자말렉",d:"나일강 섬, 조용하고 안전"},{n:"다운타운",d:"이집트 박물관 근처"}]}
+    areas:[{n:"기자",d:"피라미드 뷰 호텔"},{n:"자말렉",d:"나일강 섬, 조용하고 안전"},{n:"다운타운",d:"이집트 박물관 근처"}]},
+  { ko:"홍콩", flag:"🇭🇰", aliases:["hongkong","hong kong","침사추이","마카오"],
+    tagline:"마천루 야경과 딤섬의 도시", city:"홍콩", cityEn:"Hong Kong", iata:"HKG", airport:"첵랍콕", flight:"약 3시간 50분",
+    airlines:"대한항공, 아시아나, 캐세이퍼시픽, 제주항공", visa:"무비자 90일", currency:"홍콩 달러 (HKD)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"빅토리아 하버", en:"Victoria Harbour", k:"harbour", d:"세계 3대 야경으로 꼽히는 항구"},
+      {ko:"심포니 오브 라이트", en:"Symphony of Lights Hong Kong", k:"symphony", d:"매일 밤 8시 빌딩 레이저 쇼"},
+      {ko:"스타페리", en:"Star Ferry", k:"star ferry", d:"100년 넘게 바다를 건너는 명물 페리"},
+      {ko:"빅토리아 피크", en:"Victoria Peak", k:"peak", d:"트램을 타고 오르는 전망대"},
+      {ko:"옹핑 빅부다", en:"Tian Tan Buddha", k:"tian tan", d:"케이블카로 가는 거대한 청동 불상"}],
+    areas:[{n:"침사추이",d:"하버 뷰·쇼핑, 교통 편리"},{n:"센트럴",d:"트램·피크 접근성, 세련된 분위기"},{n:"몽콕",d:"야시장·로컬 맛집, 가성비"}]},
+  { ko:"말레이시아", flag:"🇲🇾", aliases:["malaysia","쿠알라룸푸르","코타키나발루","페낭","랑카위","kuala lumpur"],
+    tagline:"트윈타워와 열대 섬을 함께", city:"쿠알라룸푸르", cityEn:"Kuala Lumpur", iata:"KUL", airport:"쿠알라룸푸르", flight:"약 6시간 30분",
+    airlines:"대한항공, 말레이시아항공, 에어아시아", visa:"무비자 90일 (디지털 입국카드 MDAC 제출)", currency:"링깃 (MYR)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"페트로나스 트윈타워", en:"Petronas Towers", k:"petronas", d:"쿠알라룸푸르의 상징인 쌍둥이 빌딩"},
+      {ko:"바투 동굴", en:"Batu Caves", k:"batu", d:"272개 무지개 계단 위 힌두 사원"},
+      {ko:"페낭 조지타운", en:"George Town Penang", k:"penang", d:"벽화 골목과 노점 음식의 세계유산 도시"},
+      {ko:"랑카위", en:"Langkawi", d:"맹그로브 숲과 스카이브리지"},
+      {ko:"키나발루산", en:"Mount Kinabalu", k:"kinabalu", d:"보르네오 최고봉 (코타키나발루)"}],
+    areas:[{n:"부킷 빈탕",d:"쇼핑·먹자골목, 교통 편리"},{n:"KLCC",d:"트윈타워 뷰 호텔"},{n:"조지타운",q:"George Town Penang",d:"페낭 구시가 감성 숙소"}]},
+  { ko:"라오스", flag:"🇱🇦", aliases:["laos","비엔티안","루앙프라방","방비엥","vientiane"],
+    tagline:"느리게 흐르는 메콩강의 여유", city:"비엔티안", cityEn:"Vientiane", iata:"VTE", airport:"왓따이", flight:"약 5시간 30분",
+    airlines:"진에어, 티웨이, 라오항공", visa:"무비자 30일", currency:"킵 (LAK)", tz:"한국보다 2시간 느림",
+    spots:[
+      {ko:"꽝시 폭포", en:"Kuang Si Falls", k:"kuang si", d:"에메랄드빛 계단식 폭포"},
+      {ko:"루앙프라방", en:"Luang Prabang", k:"luang prabang", d:"새벽 탁발 행렬의 세계유산 도시"},
+      {ko:"방비엥", en:"Vang Vieng", k:"vang vieng", d:"블루라군과 카약, 열기구"},
+      {ko:"탓루앙", en:"Pha That Luang", k:"that luang", d:"라오스의 상징인 황금 불탑"}],
+    areas:[{n:"메콩 강변",d:"비엔티안 야시장 도보권"},{n:"루앙프라방",q:"Luang Prabang",d:"구시가 게스트하우스"},{n:"방비엥",q:"Vang Vieng",d:"강변 리조트"}]},
+  { ko:"몽골", flag:"🇲🇳", aliases:["mongolia","울란바토르","고비","테를지","ulaanbaatar"],
+    tagline:"끝없는 초원과 쏟아지는 별", city:"울란바토르", cityEn:"Ulaanbaatar", iata:"UBN", airport:"칭기즈칸", flight:"약 3시간 30분",
+    airlines:"대한항공, 몽골항공(MIAT), 제주항공, 티웨이", visa:"무비자 입국 (정책 변동, 출발 전 확인)", currency:"투그릭 (MNT)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"테를지 국립공원", en:"Gorkhi-Terelj National Park", k:"terelj", d:"거북바위와 게르 캠프"},
+      {ko:"고비 사막", en:"Gobi Desert", k:"gobi", d:"모래 언덕과 낙타 트레킹"},
+      {ko:"홉스골 호수", en:"Khövsgöl Lake", k:"khovsgol", d:"몽골의 푸른 진주"},
+      {ko:"울란바토르", en:"Ulaanbaatar", k:"ulaanbaatar", d:"초원으로 떠나는 출발점"}],
+    areas:[{n:"수흐바타르 광장",d:"시내 중심, 이동 편리"},{n:"테를지 게르 캠프",q:"Terelj Mongolia",d:"초원 위 게르 숙박"}]},
+  { ko:"인도", flag:"🇮🇳", aliases:["india","델리","뉴델리","아그라","자이푸르","바라나시","delhi"],
+    tagline:"강렬한 색과 향, 시간이 멈춘 유적", city:"델리", cityEn:"New Delhi", iata:"DEL", airport:"인디라 간디", flight:"약 8시간 30분",
+    airlines:"대한항공, 에어인디아", visa:"전자비자(e-Visa) 필요", currency:"루피 (INR)", tz:"한국보다 3시간 30분 느림",
+    spots:[
+      {ko:"타지마할", en:"Taj Mahal", k:"taj", d:"사랑으로 지은 백색 대리석 영묘"},
+      {ko:"바라나시 가트", en:"Varanasi ghats", k:"varanasi", d:"갠지스강의 새벽 의식"},
+      {ko:"하와 마할", en:"Hawa Mahal Jaipur", k:"hawa", d:"핑크 시티의 바람의 궁전"},
+      {ko:"암베르 성", en:"Amber Fort", k:"amber fort", d:"언덕 위 라지푸트 요새"},
+      {ko:"황금 사원", en:"Golden Temple Amritsar", k:"amritsar", d:"연못 위에 빛나는 시크교 성지"}],
+    areas:[{n:"코넛 플레이스",d:"델리 중심가"},{n:"아그라",q:"Agra",d:"타지마할 뷰 호텔"},{n:"자이푸르",q:"Jaipur",d:"궁전 개조 헤리티지 호텔"}]},
+  { ko:"몰디브", flag:"🇲🇻", aliases:["maldives","말레"],
+    tagline:"인도양 위 수상 빌라의 낙원", city:"말레", cityEn:"Malé", iata:"MLE", airport:"벨라나", flight:"약 9~11시간 (경유 포함)",
+    airlines:"대한항공(시즌), 싱가포르항공·스리랑카항공(경유)", visa:"도착 시 30일 무료 체류", currency:"루피야 (MVR), 달러 통용", tz:"한국보다 4시간 느림",
+    spots:[
+      {ko:"몰디브 해변", en:"Maldives beach", k:"maldives", d:"새하얀 모래와 투명한 바다"},
+      {ko:"산호초 스노클링", en:"Maldives coral reef", k:"reef", d:"열대어가 가득한 하우스 리프"},
+      {ko:"고래상어", en:"whale shark Maldives", k:"whale shark", d:"남아리 아톨의 고래상어 투어"}],
+    areas:[{n:"북말레 아톨",q:"North Male Atoll",d:"공항에서 스피드보트로 가까움"},{n:"남말레 아톨",q:"South Male Atoll",d:"조용한 리조트"},{n:"마푸시",q:"Maafushi",d:"로컬 섬, 가성비 숙소"}]},
+  { ko:"아랍에미리트", flag:"🇦🇪", aliases:["uae","두바이","아부다비","dubai","abu dhabi"],
+    tagline:"사막 위에 세운 미래 도시", city:"두바이", cityEn:"Dubai", iata:"DXB", airport:"두바이", flight:"약 9시간 30분",
+    airlines:"대한항공, 에미레이트", visa:"무비자 90일", currency:"디르함 (AED)", tz:"한국보다 5시간 느림",
+    spots:[
+      {ko:"부르즈 할리파", en:"Burj Khalifa", k:"burj", d:"세계에서 가장 높은 빌딩"},
+      {ko:"두바이 분수", en:"Dubai Fountain", k:"dubai", d:"음악에 맞춰 춤추는 대형 분수 쇼"},
+      {ko:"셰이크 자이드 모스크", en:"Sheikh Zayed Grand Mosque", k:"zayed", d:"순백의 대리석 모스크 (아부다비)"},
+      {ko:"팜 주메이라", en:"Palm Jumeirah", k:"jumeirah", d:"야자수 모양의 인공섬"},
+      {ko:"사막 사파리", en:"Dubai desert safari", k:"desert", d:"사구를 달리는 사륜구동 투어"}],
+    areas:[{n:"다운타운 두바이",d:"부르즈 할리파·두바이몰 도보권"},{n:"두바이 마리나",d:"해변과 요트 야경"},{n:"팜 주메이라",d:"고급 비치 리조트"}]},
+  { ko:"독일", flag:"🇩🇪", aliases:["germany","베를린","뮌헨","프랑크푸르트","쾰른","berlin","munich"],
+    tagline:"동화 속 성과 맥주, 깊은 역사", city:"프랑크푸르트", cityEn:"Frankfurt", iata:"FRA", airport:"프랑크푸르트", flight:"약 14시간",
+    airlines:"대한항공, 아시아나, 루프트한자", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"노이슈반슈타인 성", en:"Neuschwanstein Castle", k:"neuschwanstein", d:"디즈니 성의 모티브가 된 백조의 성"},
+      {ko:"브란덴부르크 문", en:"Brandenburg Gate", k:"brandenburg", d:"베를린 통일의 상징"},
+      {ko:"베를린 장벽", en:"Berlin Wall", k:"berlin wall", d:"분단의 흔적과 이스트사이드 갤러리"},
+      {ko:"쾰른 대성당", en:"Cologne Cathedral", k:"cologne", d:"600년에 걸쳐 지은 고딕 대성당"},
+      {ko:"로텐부르크", en:"Rothenburg ob der Tauber", k:"rothenburg", d:"중세 성벽이 그대로 남은 마을"}],
+    areas:[{n:"프랑크푸르트 중앙역",d:"공항·기차 이동 편리"},{n:"뮌헨 마리엔 광장",q:"Marienplatz Munich",d:"남부 여행 거점"},{n:"베를린 미테",q:"Mitte Berlin",d:"베를린 명소 밀집"}]},
+  { ko:"오스트리아", flag:"🇦🇹", aliases:["austria","빈","비엔나","잘츠부르크","할슈타트","vienna","salzburg"],
+    tagline:"음악과 호수, 알프스의 낭만", city:"빈", cityEn:"Vienna", iata:"VIE", airport:"빈 국제공항", flight:"약 12시간 30분",
+    airlines:"대한항공, 오스트리아항공(경유)", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"할슈타트", en:"Hallstatt", k:"hallstatt", d:"호수에 비친 그림엽서 마을"},
+      {ko:"쇤브룬 궁전", en:"Schönbrunn Palace", k:"schonbrunn", d:"합스부르크 왕가의 여름 궁전"},
+      {ko:"잘츠부르크", en:"Salzburg old town", k:"salzburg", d:"모차르트와 사운드 오브 뮤직의 도시"},
+      {ko:"슈테판 대성당", en:"St. Stephen's Cathedral Vienna", k:"vienna", d:"모자이크 지붕의 빈 랜드마크"},
+      {ko:"그로스글로크너", en:"Grossglockner", k:"grossglockner", d:"알프스를 넘는 고산 도로"}],
+    areas:[{n:"인네레 슈타트",d:"빈 1구, 명소 도보권"},{n:"마리아힐퍼 거리",d:"쇼핑가, 가성비"},{n:"잘츠부르크 구시가",q:"Salzburg Altstadt",d:"강변 감성 숙소"}]},
+  { ko:"헝가리", flag:"🇭🇺", aliases:["hungary","부다페스트","budapest"],
+    tagline:"다뉴브의 진주, 유럽 최고의 야경", city:"부다페스트", cityEn:"Budapest", iata:"BUD", airport:"리스트 페렌츠", flight:"약 12시간",
+    airlines:"대한항공(직항), LOT·루프트한자(경유)", visa:"무비자 90일 (쉥겐)", currency:"포린트 (HUF)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"국회의사당", en:"Hungarian Parliament Building", k:"parliament", d:"다뉴브강 위로 빛나는 야경 명소"},
+      {ko:"어부의 요새", en:"Fisherman's Bastion", k:"bastion", d:"동화 같은 하얀 전망대"},
+      {ko:"세체니 다리", en:"Chain Bridge Budapest", k:"chain", d:"부다와 페스트를 잇는 사슬 다리"},
+      {ko:"세체니 온천", en:"Széchenyi thermal bath", k:"szechenyi", d:"노란 궁전 속 야외 온천"}],
+    areas:[{n:"5구 (벨바로시)",d:"국회·다뉴브 야경 도보권"},{n:"7구 유대인 지구",d:"루인바·맛집 밀집"},{n:"부다 성 지구",d:"조용한 언덕 위 전망"}]},
+  { ko:"크로아티아", flag:"🇭🇷", aliases:["croatia","두브로브니크","스플리트","자그레브","플리트비체","dubrovnik"],
+    tagline:"아드리아해의 붉은 지붕과 요정의 호수", city:"자그레브", cityEn:"Zagreb", iata:"ZAG", airport:"자그레브", flight:"약 12시간 (시즌 직항, 보통 경유)",
+    airlines:"대한항공(시즌), 루프트한자·터키항공(경유)", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"두브로브니크 성벽", en:"Dubrovnik", k:"dubrovnik", d:"'왕좌의 게임' 촬영지, 아드리아해의 진주"},
+      {ko:"플리트비체 호수", en:"Plitvice Lakes", k:"plitvice", d:"16개 호수와 폭포가 이어진 국립공원"},
+      {ko:"흐바르 섬", en:"Hvar", k:"hvar", d:"라벤더와 요트의 섬"},
+      {ko:"스플리트", en:"Diocletian's Palace Split", k:"diocletian", d:"로마 황제의 궁전 안 구시가"}],
+    areas:[{n:"두브로브니크 구시가",q:"Dubrovnik Old Town",d:"성벽 안 숙소"},{n:"스플리트",q:"Split Croatia",d:"섬 투어 거점"},{n:"자그레브 중심",d:"교통 거점, 가성비"}]},
+  { ko:"네덜란드", flag:"🇳🇱", aliases:["netherlands","holland","암스테르담","amsterdam","네델란드"],
+    tagline:"운하와 풍차, 튤립의 나라", city:"암스테르담", cityEn:"Amsterdam", iata:"AMS", airport:"스키폴", flight:"약 14시간",
+    airlines:"대한항공, KLM", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"암스테르담 운하", en:"Amsterdam canal", k:"amsterdam", d:"17세기 운하 크루즈"},
+      {ko:"잔세스칸스", en:"Zaanse Schans", k:"zaanse", d:"풍차가 줄지어 선 민속 마을"},
+      {ko:"킨데르데이크", en:"Kinderdijk windmills", k:"kinderdijk", d:"19개 풍차의 세계유산"},
+      {ko:"큐켄호프", en:"Keukenhof", k:"keukenhof", d:"봄마다 열리는 세계 최대 튤립 정원"}],
+    areas:[{n:"운하 지구",d:"감성 부티크 호텔"},{n:"뮤지엄 광장",d:"반 고흐·국립미술관 근처"},{n:"중앙역 주변",d:"공항·근교 이동 편리"}]},
+  { ko:"포르투갈", flag:"🇵🇹", aliases:["portugal","리스본","포르투","리스보아","lisbon","porto"],
+    tagline:"노란 트램과 대서양 노을", city:"리스본", cityEn:"Lisbon", iata:"LIS", airport:"움베르투 델가두", flight:"약 16시간 (경유)",
+    airlines:"루프트한자·에어프랑스·터키항공(경유)", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 9시간 느림 (서머타임 8시간)",
+    spots:[
+      {ko:"리스본 트램 28", en:"Lisbon tram", k:"lisbo", d:"언덕길을 오르는 노란 트램"},
+      {ko:"벨렝탑", en:"Belém Tower Lisbon", k:"belem", d:"대항해시대의 출발점"},
+      {ko:"포르투 동 루이스 다리", en:"Dom Luís I Bridge Porto", k:"porto", d:"도루강을 가로지르는 철교와 와이너리"},
+      {ko:"신트라 페나 궁전", en:"Pena Palace Sintra", k:"sintra", d:"알록달록한 언덕 위 궁전"},
+      {ko:"베나질 동굴", en:"Benagil Algarve", k:"benagil", d:"천장이 뚫린 바다 동굴 (알가르브)"}],
+    areas:[{n:"바이샤·시아두",d:"중심가, 트램·쇼핑"},{n:"알파마",d:"전망대와 파두 골목"},{n:"포르투 히베이라",q:"Ribeira Porto",d:"강변 야경 숙소"}]},
+  { ko:"아이슬란드", flag:"🇮🇸", aliases:["iceland","레이캬비크","reykjavik"],
+    tagline:"폭포·빙하·오로라, 지구 밖 풍경", city:"레이캬비크", cityEn:"Reykjavik", iata:"KEF", airport:"케플라비크", flight:"약 16시간+ (경유)",
+    airlines:"핀에어·KLM·아이슬란드항공(경유)", visa:"무비자 90일 (쉥겐)", currency:"크로나 (ISK)", tz:"한국보다 9시간 느림",
+    spots:[
+      {ko:"굴포스", en:"Gullfoss", k:"gullfoss", d:"골든서클의 2단 황금 폭포"},
+      {ko:"스트로퀴르 간헐천", en:"Strokkur geyser", k:"strokkur", d:"몇 분마다 솟구치는 온천수"},
+      {ko:"셀랴란즈포스", en:"Seljalandsfoss", k:"seljalandsfoss", d:"폭포 뒤를 걸을 수 있는 폭포"},
+      {ko:"스코가포스", en:"Skógafoss", k:"skogafoss", d:"무지개가 걸리는 거대한 물줄기"},
+      {ko:"요쿨살론", en:"Jökulsárlón", k:"jokulsarlon", d:"빙하 조각이 떠다니는 호수"},
+      {ko:"레이니스피아라", en:"Reynisfjara", k:"reynisfjara", d:"주상절리가 있는 검은 모래 해변"}],
+    areas:[{n:"레이캬비크 시내",q:"Reykjavik downtown",d:"투어 출발 거점"},{n:"비크",q:"Vik Iceland",d:"남부 해안 여행 거점"},{n:"셀포스",q:"Selfoss Iceland",d:"골든서클 근처"}]},
+  { ko:"노르웨이", flag:"🇳🇴", aliases:["norway","오슬로","베르겐","트롬쇠","oslo","bergen"],
+    tagline:"피오르와 오로라의 북유럽", city:"오슬로", cityEn:"Oslo", iata:"OSL", airport:"가르데모엔", flight:"약 14시간+ (경유)",
+    airlines:"핀에어·KLM·루프트한자(경유)", visa:"무비자 90일 (쉥겐)", currency:"크로네 (NOK)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"게이랑에르 피오르", en:"Geirangerfjord", k:"geiranger", d:"폭포가 쏟아지는 세계유산 피오르"},
+      {ko:"로포텐 제도", en:"Lofoten", k:"lofoten", d:"붉은 어부 오두막과 설산"},
+      {ko:"베르겐 브뤼겐", en:"Bryggen Bergen", k:"bergen", d:"알록달록한 목조 상관 거리"},
+      {ko:"트롬쇠 오로라", en:"Tromsø aurora", k:"troms", d:"북극권 오로라 헌팅"},
+      {ko:"프레이케스톨렌", en:"Preikestolen", k:"preikestolen", d:"604m 절벽 위 설교단 바위"}],
+    areas:[{n:"오슬로 중앙역",d:"교통 거점"},{n:"베르겐 브뤼겐",q:"Bryggen Bergen",d:"피오르 투어 출발점"},{n:"트롬쇠",q:"Tromso",d:"오로라 투어 거점"}]},
+  { ko:"뉴질랜드", flag:"🇳🇿", aliases:["new zealand","nz","오클랜드","퀸스타운","auckland","queenstown"],
+    tagline:"반지의 제왕 속 대자연", city:"오클랜드", cityEn:"Auckland", iata:"AKL", airport:"오클랜드", flight:"약 11시간",
+    airlines:"대한항공, 에어뉴질랜드", visa:"전자여행허가 NZeTA 필요 (3개월)", currency:"뉴질랜드 달러 (NZD)", tz:"한국보다 3시간 빠름 (서머타임 4시간)",
+    spots:[
+      {ko:"밀포드 사운드", en:"Milford Sound", k:"milford", d:"빙하가 깎은 협만 크루즈"},
+      {ko:"호비턴", en:"Hobbiton", k:"hobbit", d:"영화 속 호빗 마을 촬영지"},
+      {ko:"테카포 호수", en:"Lake Tekapo", k:"tekapo", d:"밀키 블루 호수와 별빛"},
+      {ko:"퀸스타운", en:"Queenstown New Zealand", k:"queenstown", d:"번지점프와 레포츠의 도시"},
+      {ko:"로토루아", en:"Rotorua", k:"rotorua", d:"지열 온천과 마오리 문화"}],
+    areas:[{n:"오클랜드 CBD",d:"항구·쇼핑 중심"},{n:"퀸스타운",q:"Queenstown",d:"남섬 여행 거점"},{n:"로토루아",q:"Rotorua",d:"온천 리조트"}]},
+  { ko:"멕시코", flag:"🇲🇽", aliases:["mexico","멕시코시티","칸쿤","툴룸","cancun","cancún"],
+    tagline:"마야 유적과 카리브해의 에메랄드", city:"멕시코시티", cityEn:"Mexico City", iata:"MEX", airport:"베니토 후아레스", flight:"약 13시간 30분",
+    airlines:"아에로멕시코(직항), 대한항공(미국 경유)", visa:"무비자 (최대 180일)", currency:"페소 (MXN)", tz:"한국보다 15시간 느림",
+    spots:[
+      {ko:"치첸이트사", en:"Chichen Itza", k:"chichen", d:"마야 문명의 계단식 피라미드"},
+      {ko:"테오티우아칸", en:"Teotihuacan", k:"teotihuac", d:"해와 달의 피라미드"},
+      {ko:"칸쿤 해변", en:"Cancún beach", k:"cancun", d:"카리브해의 올인클루시브 휴양지"},
+      {ko:"툴룸", en:"Tulum ruins", k:"tulum", d:"바다 절벽 위 마야 유적"},
+      {ko:"세노테", en:"Cenote Yucatan", k:"cenote", d:"정글 속 천연 우물 수영"}],
+    areas:[{n:"로마·콘데사",q:"Roma Norte Mexico City",d:"감성 카페·맛집 동네"},{n:"칸쿤 호텔존",q:"Cancun Hotel Zone",d:"해변 리조트 밀집"},{n:"툴룸",q:"Tulum",d:"정글 부티크 호텔"}]},
+  { ko:"페루", flag:"🇵🇪", aliases:["peru","리마","쿠스코","마추픽추","lima","cusco"],
+    tagline:"잉카의 공중 도시를 향해", city:"리마", cityEn:"Lima", iata:"LIM", airport:"호르헤 차베스", flight:"약 20시간+ (경유)",
+    airlines:"대한항공·아메리칸항공·LATAM(미국 경유)", visa:"무비자 90일", currency:"솔 (PEN)", tz:"한국보다 14시간 느림",
+    spots:[
+      {ko:"마추픽추", en:"Machu Picchu", k:"machu", d:"안데스 산 위 잉카의 공중 도시"},
+      {ko:"쿠스코", en:"Cusco", k:"cusco", d:"잉카 제국의 수도"},
+      {ko:"티티카카 호수", en:"Lake Titicaca", k:"titicaca", d:"해발 3,800m 갈대섬 마을"},
+      {ko:"비니쿤카 무지개산", en:"Vinicunca Rainbow Mountain", k:"vinicunca", d:"일곱 빛깔 줄무늬 산"},
+      {ko:"나스카 라인", en:"Nazca Lines", k:"nazca", d:"하늘에서만 보이는 거대 그림"}],
+    areas:[{n:"미라플로레스",q:"Miraflores Lima",d:"리마의 안전한 해안가"},{n:"쿠스코 구시가",q:"Cusco",d:"아르마스 광장 주변"},{n:"아구아스칼리엔테스",q:"Aguas Calientes",d:"마추픽추 입구 마을"}]}
+];
+const REGIONS = [
+  ["아시아", ["일본","대만","홍콩","중국","몽골","베트남","태국","라오스","싱가포르","말레이시아","인도네시아","필리핀","인도","몰디브"]],
+  ["유럽", ["프랑스","이탈리아","스페인","포르투갈","영국","독일","네덜란드","스위스","오스트리아","체코","헝가리","크로아티아","그리스","아이슬란드","노르웨이","튀르키예"]],
+  ["아메리카", ["미국","캐나다","멕시코","페루"]],
+  ["오세아니아", ["호주","뉴질랜드"]],
+  ["중동·아프리카", ["아랍에미리트","이집트"]]
 ];
 
 /* =========================================================
    Helpers
    ========================================================= */
 // Windows는 국기 이모지를 글자(JP)로 표시하므로 국기 이미지를 사용
-const CC = {일본:"jp",프랑스:"fr",이탈리아:"it",영국:"gb",스페인:"es",스위스:"ch",체코:"cz",그리스:"gr",튀르키예:"tr",미국:"us",캐나다:"ca",호주:"au",태국:"th",베트남:"vn",대만:"tw",싱가포르:"sg",중국:"cn",인도네시아:"id",필리핀:"ph",이집트:"eg"};
-DESTS.forEach(d => d.flagImg = `<img src="https://flagcdn.com/w80/${CC[d.ko]}.png" alt="${d.flag}" style="height:.8em;width:auto;border-radius:3px;vertical-align:-0.05em">`);
+const CC = {일본:"jp",프랑스:"fr",이탈리아:"it",영국:"gb",스페인:"es",스위스:"ch",체코:"cz",그리스:"gr",튀르키예:"tr",미국:"us",캐나다:"ca",호주:"au",태국:"th",베트남:"vn",대만:"tw",싱가포르:"sg",중국:"cn",인도네시아:"id",필리핀:"ph",이집트:"eg",
+  홍콩:"hk",말레이시아:"my",라오스:"la",몽골:"mn",인도:"in",몰디브:"mv",아랍에미리트:"ae",독일:"de",오스트리아:"at",헝가리:"hu",크로아티아:"hr",네덜란드:"nl",포르투갈:"pt",아이슬란드:"is",노르웨이:"no",뉴질랜드:"nz",멕시코:"mx",페루:"pe"};
+DESTS.forEach(d => d.flagImg = `<img class="flag" src="https://flagcdn.com/w80/${CC[d.ko]}.png" alt="${d.flag}">`);
 const $ = s => document.querySelector(s);
 const enc = encodeURIComponent;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -427,9 +607,14 @@ const yymmdd = s => s.slice(2).replace(/-/g,'');
   $('#d1').value = iso(a); $('#d2').value = iso(b); $('#d1').min = iso(new Date());
   $('#destList').innerHTML = DESTS.map(d=>`<option value="${d.ko}">`).join('') +
     DESTS.map(d=>`<option value="${d.city}">${d.ko}</option>`).join('');
-  $('#chips').innerHTML = ["일본","베트남","태국","프랑스","스위스","튀르키예","호주","대만","이탈리아","미국"]
-    .map(k => { const d = findDest(k); return `<button class="chip" data-q="${k}">${d.flagImg} ${k}</button>`; }).join('');
+  renderHome();
 })();
+function chip(k){ const d = findDest(k); return `<button class="chip" data-q="${k}">${d.flagImg}${k}</button>`; }
+// 첫 화면: 지역별 전체 여행지
+function renderHome(){
+  $('#main').innerHTML = REGIONS.map(([r, list]) =>
+    `<div class="region"><h3>${r}</h3><div class="chips">${list.map(chip).join('')}</div></div>`).join('');
+}
 $('#d1').addEventListener('change', () => {
   if ($('#d2').value <= $('#d1').value){ const b = new Date($('#d1').value); b.setDate(b.getDate()+4); $('#d2').value = iso(b); }
   $('#d2').min = $('#d1').value;
@@ -503,7 +688,7 @@ function render(q){
   history.replaceState(null,'','#'+enc(c.ko));
   $('#main').innerHTML = `
     <div class="dest-head">
-      <div><h2><span>${c.flagImg||c.flag}</span>${esc(c.ko)}</h2><p>${esc(c.tagline)}</p></div>
+      <div><h2>${c.flagImg||c.flag}${esc(c.ko)}</h2><p>${esc(c.tagline)}</p></div>
       ${c.custom ? '' : `<div class="facts">
         <div class="fact"><b>비자</b>${esc(c.visa)}</div>
         <div class="fact"><b>통화</b>${esc(c.currency)}</div>
@@ -579,8 +764,6 @@ async function loadCard(el){
   }
   if (el._vids.length < 2) el.querySelector('.next').remove();
   setVideo(el, 0);
-  // 첫 카드 영상을 히어로 배경으로
-  if (el.dataset.i === '0'){ const hv = $('#heroVid'); hv.src = el._vids[0].src; hv.oncanplay = () => { hv.classList.add('on'); hv.play().catch(()=>{}); }; }
 }
 
 function setVideo(el, idx){
@@ -667,14 +850,15 @@ function renderTravel(c){
       <h4>추천 숙소 지역</h4>
       <div class="areas">${c.areas.map(a => `
         <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
-          <div class="mini"><a href="${bk(a.n+' '+c.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${gh(a.n+' '+c.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
+          <div class="mini"><a href="${bk(a.q||a.n+' '+c.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${gh(a.q||a.n+' '+c.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
       </div>
     </div>`;
 }
 
 /* ---------- 이벤트 ---------- */
 $('#searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('#q').value.trim(); if (q) render(q); });
-$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b){ $('#q').value = b.dataset.q; render(b.dataset.q); } });
+document.addEventListener('click', e => { const b = e.target.closest('.chip'); if (b){ $('#q').value = b.dataset.q; render(b.dataset.q); } });
+$('.logo').addEventListener('click', () => { history.replaceState(null,'',location.pathname); $('#q').value=''; current = null; renderHome(); scrollTo({top:0,behavior:'smooth'}); });
 if (location.hash.length > 1){ const q = decodeURIComponent(location.hash.slice(1)); if (!['spots','flights','hotels'].includes(q)){ $('#q').value = q; render(q); } }
 </script>
 </body>
