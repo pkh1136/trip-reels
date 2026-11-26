@@ -546,13 +546,16 @@ async function renderSpots(c){
     el.addEventListener('click', () => openModal(el));
     el.addEventListener('mouseenter', () => el._v && el._v.play().catch(()=>{}));
   });
-  // 화면에 보일 때 로딩 + 재생, 벗어나면 정지
-  const io = new IntersectionObserver(ents => ents.forEach(en => {
-    const el = en.target;
-    if (en.isIntersecting){ if (!el._loaded) loadCard(el); else el._v && el._v.play().catch(()=>{}); }
-    else el._v && el._v.pause();
-  }), {threshold:.35});
-  cards.forEach(el => io.observe(el));
+  // 화면 근처에 오면 미리 로딩 (작은 화면에서도 카드가 조금만 보여도 시작)
+  const loader = new IntersectionObserver(ents => ents.forEach(en => {
+    if (en.isIntersecting && !en.target._loaded){ loadCard(en.target); loader.unobserve(en.target); }
+  }), {rootMargin:'300px 0px'});
+  // 보이는 카드만 재생, 벗어나면 정지
+  const player = new IntersectionObserver(ents => ents.forEach(en => {
+    const v = en.target._v; if (!v) return;
+    en.isIntersecting ? v.play().catch(()=>{}) : v.pause();
+  }), {threshold:.2});
+  cards.forEach(el => { loader.observe(el); player.observe(el); });
 }
 
 async function loadCard(el){
