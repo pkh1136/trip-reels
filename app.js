@@ -330,18 +330,31 @@ function cached(key, fn) {
 // 여행 영상이 아닌 것 제외: 위성·관측 영상, 지도·3D 렌더링, 행사·정치 영상, 1960년대 이전 흑백 필름
 const NOT_TRAVEL = /\b(cira|goes-?\d*|nasa|noaa|landsat|sentinel|modis|copernicus|satellite|skysat|from space|iss\b|radar|himawari|simulation|lecture|interview|press conference|state dinner|president|minister|potus|map|maps|3d|render(ing)?|animation|orbit|peakvisor|peak ?names|path names|newsreel|footage)\b/i;
 const OLD_FILM = /\b(18[89]\d|19[0-7]\d)\b/;   // 1970년대 이전 기록 영상 (예: 'The Nixons in Guam … (1972)')
-const words = t => fold(t).split(/[\s-]+/).filter(w => w.length > 3);
-function fetchVideos(term, limit = 8) {
-  return cached(`v2:${term}|${limit}`, async () => {
+// 군사·정치·뉴스·재난 영상 제외: 제목뿐 아니라 분류와 작성자까지 확인 (예: 괌을 검색하면 미군 홍보 영상이 대부분)
+const NOT_TRAVEL_SOURCE = /\b(navy|naval|marines|marine corps|usmc|army|air force|air base|national guard|coast guard|uscg|usaf|usns|uss|idf|jmnn|military|soldiers?|sailors?|airmen|troops|battalion|squadron|war|warfare|wwii|president\w*|minister\w*|governor|senator|congress\w*|elections?|electoral|politic\w*|summit|protests?|coup|speech|remarks|interview\w*|discussion|press|news|report\w*|embassy|human rights|derechos|economic\w*|clinton|reagan|nixon|obama|biden|voice of america|voa|typhoon|hurricane|cyclone|flood\w*|earthquake|covid|pandemic|satellite|nasa|noaa|cira|himawari|from space|eclipse|google earth|lecture|conference|wikimania|wikimedians|wikitongues|sign language|simpleshow|concerts?|singers?)\b/i;
+// 분류에 'Videos from Guam', '2021 in Guam'처럼 그 지역이라고 적혀 있는지
+function inPlace(categories, term) {
+  const t = fold(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${t}$|\\b(in|from|of) (the )?${t}($|,| \\()`);
+  return categories.split('|').some(c => re.test(fold(c)));
+}
+// 목록에 없는 여행지의 영상 검색
+function fetchVideos(term, limit = 12) {
+  return cached(`v3:${term}|${limit}`, async () => {
     const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
-      + '&generator=search&gsrnamespace=6&gsrlimit=' + limit + '&gsrsearch=' + enc('filetype:video ' + term)
-      + '&prop=videoinfo&viprop=url|mime|size|derivatives&viurlwidth=640';
+      + '&generator=search&gsrnamespace=6&gsrlimit=50&gsrsearch=' + enc('filetype:video ' + term)   // 걸러지는 영상이 많아 넉넉히 검색
+      + '&prop=videoinfo&viprop=url|mime|size|derivatives|extmetadata&viextmetadatafilter=Categories|Artist&viurlwidth=640';
     const j = await (await fetch(url)).json();
     const pages = Object.values(j.query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
     return pages.map(pg => {
       const v = pg.videoinfo?.[0]; if (!v) return null;
       const title = pg.title.replace(/^File:/, '').replace(/\.\w+$/, '').replace(/_/g, ' ');
       if (NOT_TRAVEL.test(title) || OLD_FILM.test(title)) return null;
+      const categories = v.extmetadata?.Categories?.value || '';
+      const artist = String(v.extmetadata?.Artist?.value || '').replace(/<[^>]*>/g, ' ');
+      if (NOT_TRAVEL_SOURCE.test(`${title} | ${categories} | ${artist}`)) return null;
+      if (!fold(title).includes(fold(term))) return null;  // 제목에 검색어가 있는 영상만
+      const local = inPlace(categories, term);
       const ders = (v.derivatives || []).filter(x => /webm|mp4/.test(x.type));
       const maxH = Math.max(0, ...ders.map(x => Math.min(x.height || 0, x.width || 0) || x.height || 0));
       if (ders.length && maxH < 400) return null;          // 저화질(360p 이하)만 있는 영상 제외
@@ -349,10 +362,10 @@ function fetchVideos(term, limit = 8) {
       const small = pick('480p') || pick('720p') || pick('360p');
       const big = pick('1080p') || pick('720p') || small;
       if (!small && v.size > 40e6) return null;            // 변환본 없는 큰 원본은 제외
-      return { title, src: (small || v).src || v.url, hd: (big || v).src || v.url, poster: v.thumburl, page: v.descriptionurl };
+      return { local, video: { title, src: (small || v).src || v.url, hd: (big || v).src || v.url, poster: v.thumburl, page: v.descriptionurl } };
     }).filter(Boolean)
-      .map((v, i) => ({ v, i, s: words(term).filter(w => fold(v.title).includes(w)).length }))
-      .sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.v);
+      .sort((a, b) => b.local - a.local)                   // 그 지역 분류에 속한 영상 먼저, 나머지는 검색 순서 유지
+      .slice(0, limit).map(x => x.video);
   });
 }
 // 고정 사진(photos.js)이 없는 명소용: 지도·로고·국기·인물 같은 그림은 건너뛰고 첫 번째 풍경 사진
@@ -385,14 +398,16 @@ function pinnedVideos(files) {
     });
   });
 }
-// 한글 지명 → 영문 지명 (한국어 위키백과 문서의 영어판 제목). 예: 괌 → Guam, 시엠립 → Siem Reap
-function enName(q) {
+// 한글 지명 → 영어 위키백과 문서 제목 (한국어 위키백과 문서의 영어판 링크). 예: 괌 → Guam
+function enTitle(q) {
   if (!hasKo(q)) return Promise.resolve(null);
-  return cached('en:' + q, async () => {
+  return cached('et:' + q, async () => {
     const j = await (await fetch('https://ko.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&redirects=1&prop=langlinks&lllang=en&titles=' + enc(q))).json();
-    return j.query?.pages?.[0]?.langlinks?.[0]?.title?.replace(/\s*\(.*\)$/, '') || null;
+    return j.query?.pages?.[0]?.langlinks?.[0]?.title || null;
   });
 }
+// 검색에 쓰는 영문 지명: 괄호와 쉼표 뒤 설명을 뗌. 예: 'Saipan, Northern Mariana Islands' → Saipan
+const enName = q => enTitle(q).then(t => t?.replace(/\s*\(.*\)$|,.*$/g, '') || null);
 
 /* ---------- 사진·영상 출처 (작성자 · 라이선스) ---------- */
 // Wikimedia 파일 설명 페이지에서 작성자·라이선스를 가져옴. 여러 파일을 한 번에 묻고 7일간 캐시
@@ -646,7 +661,7 @@ async function renderSpots(focusSpot) {
     try {
       // Commons 파일 이름은 대부분 영어라, 한글 지명은 영문 지명으로 바꿔 검색 (예: 괌 → Guam)
       term = (await withTimeout(enName(c.ko), 5000).catch(() => null)) || c.ko;
-      vids = (await withTimeout(fetchVideos(term, 12), 12000)).filter(v => fold(v.title).includes(fold(term)));   // 제목에 검색어가 있는 영상만
+      vids = await withTimeout(fetchVideos(term), 12000);
     } catch {}
     if (current !== c) return;
     if (!vids.length) {
@@ -951,6 +966,14 @@ const wx = code => WX.find(([c]) => code <= c) || WX[3];
 // 여행 날짜가 2주 이내면 그 날짜의 실제 예보, 더 멀면 같은 달의 최근 3년 평균(기온·비 오는 날)
 const FORECAST_DAYS = 14;
 const geo = ap => cached('g:' + ap.en, async () => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(ap.en)}&count=1&language=ko`)).json()).results?.[0] || null);
+// 목록에 없는 여행지의 좌표. 지명 검색은 한글을 못 찾거나 동명 지역(Palau → 이탈리아)을 고르므로
+// 영어 위키백과 문서의 좌표를 먼저 쓰고, 없을 때만 지명 검색
+const customGeo = q => cached('cg:' + q, async () => {
+  const title = (await enTitle(q)) || q;
+  const j = await (await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&redirects=1&prop=coordinates&titles=' + enc(title))).json();
+  const at = j.query?.pages?.[0]?.coordinates?.[0];
+  return at ? { latitude: at.lat, longitude: at.lon } : geo({ en: q });
+});
 function climate(g) {
   const Y = new Date().getFullYear();
   return cached(`clim:${g.latitude.toFixed(2)},${g.longitude.toFixed(2)}:${Y}`, async () => {
@@ -971,7 +994,7 @@ async function showWeather() {
   const el = () => current === c && curAp === ap && S.d1 === d1;
   const box = () => $('#wxBox'), fact = () => $('#wxFact'), city = esc(cityOf(ap));
   try {
-    const g = await geo(ap); if (!g) throw 0;
+    const g = await (c.custom ? customGeo(c.ko) : geo(ap)); if (!g) throw 0;
     const base = `https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&timezone=auto`;
     const away = dday(d1);
     const [now, fc] = await Promise.all([

@@ -1,5 +1,5 @@
 /* 트립릴스 서비스 워커: 앱 화면은 오프라인에서도 열리게 캐시, 데이터(영상·환율·날씨)는 항상 네트워크 */
-const CACHE = 'trip-reels-v10';
+const CACHE = 'trip-reels-v11';
 const SHELL = ['./', './index.html', './style.css', './app.js', './data.js', './photos.js', './spotinfo.js', './config.js', './icon.svg', './icon-192.png', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
