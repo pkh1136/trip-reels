@@ -319,6 +319,8 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .retry.floating{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1}
 .tag{display:inline-block;font-size:11.5px;font-weight:700;background:#ffffffe6;color:#1b2333;border-radius:6px;padding:2px 7px;margin-bottom:6px}
 .day-card.far{background:var(--accent-soft)}
+.day-card li.picked{box-shadow:inset 3px 0 0 var(--accent)}
+.day-card .pk{color:var(--accent)}
 .day-tag{font-size:13px;font-weight:700;color:var(--accent-ink);margin:-4px 0 8px}
 .clim{background:var(--card);border-radius:12px;padding:12px;margin-bottom:8px}
 .clim-m{font-size:14px}

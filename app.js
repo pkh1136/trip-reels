@@ -932,10 +932,11 @@ function renderCalc() {
 /* ---------- 추천 일정 (♥ 저장한 명소 우선) ---------- */
 function renderPlan() {
   const c = current, box = $('#sec-plan'); if (!box || c.custom) return;
-  // 선택한 도착 도시의 명소만 사용 (♥ 저장한 곳이 있으면 그것만)
+  // 선택한 도착 도시의 명소만 사용. ♥ 저장한 곳을 먼저 넣고, 남는 날은 추천 명소로 채움
   const all = spotsFor(c, curAp), savedNames = savedFor(c);
   const picked = all.filter(s => savedNames.includes(s.ko)), useSaved = picked.length > 0;
-  const spots = useSaved ? picked : all;
+  const spots = [...picked, ...all.filter(s => !picked.includes(s))];
+  const isPicked = s => picked.includes(s);
   const days = S.trip === 'oneway' ? 4 : Math.min(10, Math.max(1, nights() + 1));
   const near = spots.filter(s => !s.g), groups = [];
   spots.filter(s => s.g).forEach(s => { const g = groups.find(x => x.g === s.g); g ? g.list.push(s) : groups.push({ g: s.g, list: [s] }); });
@@ -961,16 +962,16 @@ function renderPlan() {
   const text = plan.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}] ` + [i === 0 ? `${curAp.name} 도착·체크인` : '', ...p.list.map(s => s.ko), leave(i) ? '출국' : ''].filter(Boolean).join(' → ')).join('\n');
   box.innerHTML = `
     <div class="block-title"><h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
-      <small>${useSaved ? `♥ 저장한 명소 ${spots.length}곳 기준` : `${esc(city)} 명소 기준 · 카드의 ♥로 원하는 곳만 골라 보세요`}</small></div>
+      <small>${useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small></div>
     <div class="plan">${plan.map((p, i) => `
       <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">동선 보기 →</a>` : ''}</div>
         ${p.g ? `<p class="day-tag">🚆 근교 당일치기 · ${esc(p.g)}</p>` : ''}
         <ol>${i === 0 ? `<li class="mv">✈ ${esc(curAp.name)} 도착 · ${esc(area || city)} 숙소 체크인</li>` : ''}
-          ${p.list.map(s => `<li>${esc(s.ko)} <small>${esc(s.d)}</small></li>`).join('')}
+          ${p.list.map(s => `<li${isPicked(s) ? ' class="picked"' : ''}>${isPicked(s) ? '<span class="pk" aria-label="저장한 곳">♥</span> ' : ''}${esc(s.ko)} <small>${esc(s.d)}</small></li>`).join('')}
           ${!p.list.length && i !== 0 && !leave(i) ? '<li class="mv">자유 일정 · 쇼핑, 맛집, 휴식</li>' : ''}
           ${leave(i) ? `<li class="mv">✈ ${esc(curAp.name)} 출국</li>` : ''}</ol></div>`).join('')}
     </div>
-    ${restNear.length || restFar.length ? `<p class="muted small">일정이 짧아 빠진 곳: ${[...restNear.map(s => s.ko), ...restFar.map(g => `${g.g}(근교)`)].map(esc).join(', ')} · 날짜를 늘리면 추가돼요</p>` : ''}
+    ${restNear.length || restFar.length ? `<p class="muted small">시간이 되면 더 둘러볼 곳: ${[...restNear.map(s => s.ko), ...restFar.map(g => `${g.g}(근교)`)].map(esc).join(', ')}</p>` : ''}
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
       <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 전체 동선 지도</a></div>`;
   $('#planCopy').addEventListener('click', async () => {
