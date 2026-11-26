@@ -516,15 +516,12 @@ function renderHome() {
   bindTripCard();
   showCoverCredits();
 }
-// 첫 화면 표지 사진 출처: 카드 모서리에 작성자·라이선스, 푸터에 원본 링크 목록
+// 첫 화면 표지 사진 출처: 카드 모서리에 작성자·라이선스
 async function showCoverCredits() {
   const covers = $$('.cover[data-file]').filter(b => b.dataset.file);
   if (!covers.length) return;
   const cr = await fileCredits(covers.map(b => b.dataset.file));
   covers.forEach(b => { const c = cr[b.dataset.file]; if (c) $('.credit', b).textContent = `${c.a} · ${c.l}`; });
-  const list = covers.map(b => { const c = cr[b.dataset.file];
-    return c ? `<li>${esc(b.dataset.go)} · <a href="${esc(c.u)}" target="_blank" rel="noopener">${esc(c.a)}</a> · ${esc(c.l)}</li>` : ''; }).join('');
-  if (list) $('#coverCredits').innerHTML = list;
 }
 function savedSection() {
   const groups = {};

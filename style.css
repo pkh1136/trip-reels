@@ -127,7 +127,7 @@ h1 em{font-style:normal;color:var(--accent)}
 .pax-done{margin-top:12px;width:100%;border:0;background:var(--accent);color:#fff;border-radius:10px;padding:10px;font-weight:700}
 
 /* ---------- 공통 요소 ---------- */
-main{padding:36px 0 48px}
+main{padding:36px 0 90px}
 main:focus{outline:none}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s,transform .1s}
@@ -336,13 +336,7 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .clim-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;text-align:center}
 .clim-row small{display:block;font-size:11.5px;color:var(--muted)} .clim-row b{font-size:17px}
 .foot{border-top:1px solid var(--line);background:var(--soft);color:var(--muted);font-size:12.5px;padding:26px 0 90px;line-height:1.7}
-.foot p+p{margin-top:6px}
-.foot a{text-decoration:underline;text-underline-offset:2px}
-.foot .aff{color:var(--text);font-weight:600;background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:10px}
-.foot b{color:var(--text)}
-.credits{margin-top:10px}
-.credits summary{cursor:pointer;font-weight:600;color:var(--text);width:max-content}
-.credits ul{list-style:none;margin-top:6px;display:grid;gap:2px}
+.foot .aff{color:var(--text);font-weight:600;background:var(--card);border-radius:10px;padding:10px 12px}
 
 /* ---------- 방문 정보 · 시간표 일정 · 지도 · 먹거리 ---------- */
 .vcard .meta p.info-line{font-size:12px;color:#ffffffe6;margin-top:4px;-webkit-line-clamp:1}
