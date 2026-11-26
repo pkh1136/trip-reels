@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>트립릴스 · 여행지 영상 미리보기</title>
+<title>떠날지도 · 여행지 영상 미리보기</title>
 <meta name="description" content="가고 싶은 여행지를 입력하면 주요 명소를 짧은 영상으로 보여주고, 환율·날씨·항공편·호텔까지 한 번에.">
 <!-- canonical 주소는 app.js가 화면(첫 화면 / ?d=여행지)에 맞게 넣음 -->
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="트립릴스">
-<meta property="og:title" content="트립릴스 · 명소를 영상으로 먼저 여행하세요">
+<meta property="og:site_name" content="떠날지도">
+<meta property="og:title" content="떠날지도 · 명소를 영상으로 먼저 여행하세요">
 <meta property="og:description" content="여행지를 입력하면 명소 숏폼 영상과 환율·날씨·항공편·호텔 정보를 한 번에 보여드려요.">
 <meta property="og:image" content="https://pkh1136.github.io/trip-reels/og.png">
 <meta property="og:image:width" content="1200">
@@ -20,6 +20,8 @@
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="alternate" hreflang="ko" href="https://pkh1136.github.io/trip-reels/">
+<link rel="alternate" hreflang="en" href="https://pkh1136.github.io/trip-reels/en/">
 <!-- 폰트: 화면에 쓰인 글자 묶음만 받는 dynamic-subset 버전 (일반 버전은 굵기마다 약 750KB) -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
@@ -33,51 +35,52 @@
 </script>
 </head>
 <body>
-<a class="skip" href="#main">본문으로 건너뛰기</a>
+<a class="skip" href="#main" data-en="Skip to content">본문으로 건너뛰기</a>
 
 <header class="hero" id="top">
   <div class="wrap">
-    <nav class="topbar" aria-label="상단 메뉴">
-      <a class="logo" href="./" aria-label="트립릴스 처음 화면"><i aria-hidden="true">▶</i>트립릴스</a>
+    <nav class="topbar" aria-label="상단 메뉴" data-en-label="Top menu">
+      <a class="logo" href="./" aria-label="떠날지도 처음 화면" data-en-label="Maybe Go home" data-en='<i aria-hidden="true">▶</i>Maybe Go'><i aria-hidden="true">▶</i>떠날지도</a>
       <div class="top-acts">
-        <button class="icon-btn" id="savedBtn" type="button" aria-label="내 여행 보관함"><span aria-hidden="true">♥</span><b id="savedCount">0</b></button>
-        <button class="icon-btn" id="fsBtn" type="button" aria-label="글자 크게 보기" aria-pressed="false"><span aria-hidden="true">가</span></button>
+        <button class="icon-btn lang-btn" id="langBtn" type="button" aria-label="View in English" lang="en" data-en='<span aria-hidden="true" lang="ko">한</span>' data-en-label="한국어로 보기"><span aria-hidden="true">EN</span></button>
+        <button class="icon-btn" id="savedBtn" type="button" aria-label="내 여행 보관함" data-en-label="Saved places"><span aria-hidden="true">♥</span><b id="savedCount">0</b></button>
+        <button class="icon-btn" id="fsBtn" type="button" aria-label="글자 크게 보기" data-en-label="Larger text" aria-pressed="false"><span aria-hidden="true" data-en="Aa">가</span></button>
         <button class="icon-btn" id="themeBtn" type="button" aria-label="다크 모드 전환"><span aria-hidden="true" id="themeIc">🌙</span></button>
       </div>
     </nav>
 
-    <h1>어디로 떠나고 싶으세요?<br><em>명소를 영상으로 먼저 여행하세요</em></h1>
-    <p class="sub">여행지를 입력하면 주요 명소를 짧은 영상으로 보여드리고, 환율·날씨부터 항공편·호텔까지 한 번에 연결해 드려요.</p>
+    <h1 data-en="Where do you want to go?<br><em>See it on video before you travel</em>">어디로 떠나고 싶으세요?<br><em>명소를 영상으로 먼저 여행하세요</em></h1>
+    <p class="sub" data-en="Type a destination to preview its sights on short videos, then check exchange rates, weather, flights and hotels in one place. Trips are planned from Korea, with prices in Korean won.">여행지를 입력하면 주요 명소를 짧은 영상으로 보여드리고, 환율·날씨부터 항공편·호텔까지 한 번에 연결해 드려요.</p>
 
     <form class="search" id="searchForm" autocomplete="off">
       <div class="trip-opts">
-        <div class="seg" role="radiogroup" aria-label="여정 종류">
-          <button type="button" role="radio" data-trip="round" aria-checked="true">왕복</button>
-          <button type="button" role="radio" data-trip="oneway" aria-checked="false">편도</button>
+        <div class="seg" role="radiogroup" aria-label="여정 종류" data-en-label="Trip type">
+          <button type="button" role="radio" data-trip="round" aria-checked="true" data-en="Round trip">왕복</button>
+          <button type="button" role="radio" data-trip="oneway" aria-checked="false" data-en="One way">편도</button>
         </div>
-        <label class="check"><input type="checkbox" id="direct"> 직항만</label>
+        <label class="check"><input type="checkbox" id="direct"> <span data-en="Nonstop only">직항만</span></label>
       </div>
       <div class="fields">
         <div class="field dest">
-          <label for="q">여행지</label>
-          <input id="q" placeholder="국가, 도시, 명소, 공항코드" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
-          <ul class="pop suggest" id="suggest" role="listbox" aria-label="연관 검색어" hidden></ul>
+          <label for="q" data-en="Destination">여행지</label>
+          <input id="q" placeholder="국가, 도시, 명소, 공항코드" data-en-placeholder="Country, city, sight, airport" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
+          <ul class="pop suggest" id="suggest" role="listbox" aria-label="연관 검색어" data-en-label="Suggestions" hidden></ul>
         </div>
         <div class="field from">
-          <label for="from">출발</label>
-          <select id="from"><option value="ICN">인천 (ICN)</option><option value="GMP">김포 (GMP)</option></select>
+          <label for="from" data-en="From">출발</label>
+          <select id="from"><option value="ICN" data-en="Incheon (ICN)">인천 (ICN)</option><option value="GMP" data-en="Gimpo (GMP)">김포 (GMP)</option></select>
         </div>
         <div class="field date">
-          <span class="lbl" id="dateLbl">여행 날짜</span>
+          <span class="lbl" id="dateLbl" data-en="Dates">여행 날짜</span>
           <button type="button" id="dateBtn" class="field-btn" aria-haspopup="dialog" aria-labelledby="dateLbl dateBtn"></button>
-          <div class="pop cal" id="cal" role="dialog" aria-label="날짜 선택" hidden></div>
+          <div class="pop cal" id="cal" role="dialog" aria-label="날짜 선택" data-en-label="Choose dates" hidden></div>
         </div>
         <div class="field pax">
-          <span class="lbl" id="paxLbl">인원</span>
+          <span class="lbl" id="paxLbl" data-en="Travellers">인원</span>
           <button type="button" id="paxBtn" class="field-btn" aria-haspopup="dialog" aria-labelledby="paxLbl paxBtn"></button>
-          <div class="pop paxpop" id="paxPop" role="dialog" aria-label="인원 선택" hidden></div>
+          <div class="pop paxpop" id="paxPop" role="dialog" aria-label="인원 선택" data-en-label="Choose travellers" hidden></div>
         </div>
-        <button class="go" type="submit"><span>여행 떠나기</span> <i class="plane" aria-hidden="true">✈</i></button>
+        <button class="go" type="submit"><span data-en="Let's go">여행 떠나기</span> <i class="plane" aria-hidden="true">✈</i></button>
       </div>
     </form>
   </div>
@@ -85,11 +88,11 @@
 
 <main class="wrap" id="main" tabindex="-1"></main>
 
-<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="명소 영상 보기" hidden>
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="명소 영상 보기" data-en-label="Sight video viewer" hidden>
   <div class="v-stage" id="vStage">
     <video id="vVid" playsinline></video>
     <img id="vImg" alt="" hidden>
-    <iframe id="vMap" title="명소 위치 지도" loading="lazy" hidden></iframe>
+    <iframe id="vMap" title="명소 위치 지도" data-en-title="Sight location map" loading="lazy" hidden></iframe>
     <div class="v-progress"><i id="vBar"></i></div>
   </div>
   <div class="v-info">
@@ -98,29 +101,29 @@
     <p id="vDesc"></p>
     <p class="v-meta" id="vMeta"></p>
     <div class="v-acts">
-      <button type="button" class="v-btn" id="vHeart" aria-pressed="false">♡ 저장</button>
-      <button type="button" class="v-btn" id="vMapBtn" aria-pressed="false">📍 지도</button>
-      <a class="v-btn" id="vYt" target="_blank" rel="noopener">▶ 쇼츠</a>
-      <a class="v-btn" id="vSrc" target="_blank" rel="noopener">원본</a>
-      <label class="v-auto"><input type="checkbox" id="vAuto"> 자동 넘기기</label>
+      <button type="button" class="v-btn" id="vHeart" aria-pressed="false" data-en="♡ Save">♡ 저장</button>
+      <button type="button" class="v-btn" id="vMapBtn" aria-pressed="false" data-en="📍 Map">📍 지도</button>
+      <a class="v-btn" id="vYt" target="_blank" rel="noopener" data-en="▶ Shorts">▶ 쇼츠</a>
+      <a class="v-btn" id="vSrc" target="_blank" rel="noopener" data-en="Source">원본</a>
+      <label class="v-auto"><input type="checkbox" id="vAuto"> <span data-en="Auto-advance">자동 넘기기</span></label>
     </div>
     <p class="v-credit" id="vCredit"></p>
   </div>
-  <button type="button" class="v-nav v-prev" id="vPrev" aria-label="이전 명소">‹</button>
-  <button type="button" class="v-nav v-next" id="vNext" aria-label="다음 명소">›</button>
-  <button type="button" class="v-close" id="vClose" aria-label="닫기">×</button>
+  <button type="button" class="v-nav v-prev" id="vPrev" aria-label="이전 명소" data-en-label="Previous sight">‹</button>
+  <button type="button" class="v-nav v-next" id="vNext" aria-label="다음 명소" data-en-label="Next sight">›</button>
+  <button type="button" class="v-close" id="vClose" aria-label="닫기" data-en-label="Close">×</button>
 </div>
 
 <div class="fab">
-  <button type="button" class="fab-btn" id="fabSearch" aria-label="여행지 검색" hidden>🔍 <span>여행지 검색</span></button>
-  <button type="button" class="fab-btn round" id="fabTop" aria-label="맨 위로" hidden>↑</button>
+  <button type="button" class="fab-btn" id="fabSearch" aria-label="여행지 검색" data-en-label="Search destinations" hidden>🔍 <span data-en="Search">여행지 검색</span></button>
+  <button type="button" class="fab-btn round" id="fabTop" aria-label="맨 위로" data-en-label="Back to top" hidden>↑</button>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- 제휴 고지: config.js에 제휴 ID가 들어갈 때만 표시 -->
 <footer class="foot" id="affNote" hidden>
   <div class="wrap">
-    <p class="aff">📢 이 사이트의 일부 링크(항공·호텔·투어 예약 사이트)는 제휴 링크예요. 링크를 통해 예약하면 트립릴스가 일정 수수료를 받을 수 있으며, 이용자가 내는 가격에는 영향이 없어요.</p>
+    <p class="aff" data-en="📢 Some links on this site (flights, hotels, tours) are affiliate links. If you book through them, Maybe Go may earn a commission at no extra cost to you.">📢 이 사이트의 일부 링크(항공·호텔·투어 예약 사이트)는 제휴 링크예요. 링크를 통해 예약하면 떠날지도가 일정 수수료를 받을 수 있으며, 이용자가 내는 가격에는 영향이 없어요.</p>
   </div>
 </footer>
 
@@ -128,6 +131,11 @@
 <script src="data.js"></script>
 <script src="photos.js"></script>
 <script src="spotinfo.js"></script>
+<!-- 언어: 영어판 데이터와 전환 코드 -->
+<script src="data-en.js"></script>
+<script src="data-en-spots.js"></script>
+<script src="data-en-places.js"></script>
+<script src="lang.js"></script>
 <!-- 지도 라이브러리(Leaflet)는 일정 지도를 그릴 때 app.js가 불러옴 -->
 <script src="app.js"></script>
 </body>

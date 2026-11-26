@@ -1,4 +1,4 @@
-/* 트립릴스 앱 — data.js의 DESTS · REGIONS · AIRPORTS · AREAS · CC · INFO 사용 */
+/* 떠날지도 앱 — data.js의 DESTS · REGIONS · AIRPORTS · AREAS · CC · INFO 사용 */
 'use strict';
 
 /* =========================================================
@@ -31,8 +31,11 @@ const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const parseD = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return iso(d); };
 const today = () => iso(new Date());
-const WD = '일월화수목금토';
-const fmtD = s => { const d = parseD(s); return `${d.getMonth() + 1}.${d.getDate()}(${WD[d.getDay()]})`; };
+const WD = tx('일월화수목금토', ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthName = m => tx(`${m}월`, MON[m - 1]);   // m: 1~12
+const fmtD = s => { const d = parseD(s); return tx(`${d.getMonth() + 1}.${d.getDate()}(${WD[d.getDay()]})`, `${WD[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`); };
+const nightsText = n => tx(`${n}박`, plural(n, 'night'));
 const ymd = s => s.replace(/-/g, '');
 const yymmdd = s => s.slice(2).replace(/-/g, '');
 const dday = s => Math.round((parseD(s) - parseD(today())) / 864e5);
@@ -48,38 +51,45 @@ DESTS.forEach(d => {
   d.aps = (AIRPORTS[d.ko] || `${d.iata}|${d.city}|${d.cityEn}|${d.flight}`).split(';')
     .map(s => { const [code, name, en, time] = s.split('|'); return { code, name, en, time }; });
   d.cur = (d.currency.match(/\(([A-Z]{3})\)/) || [])[1];
+  d.name = d.ko;   // 화면에 보이는 이름 (영어판에서는 바뀜)
+  d.visaFree = /무비자/.test(d.visa);
+  d.hours = +((d.aps[0].time || '').match(/(\d+)시간/)?.[1] ?? 99);
 });
+if (EN) localizeData(DESTS);
 const POPULAR = ["일본", "베트남", "태국", "대만", "홍콩", "프랑스", "스위스", "미국"];
 const destByKo = ko => DESTS.find(d => d.ko === ko);
 const destBySlug = s => DESTS.find(d => d.slug === s);
 function findDest(q) {
   const n = norm(q);
   if (!n) return null;
-  return DESTS.find(d => norm(d.ko) === n || norm(d.city) === n || d.aliases.some(a => norm(a) === n)
+  return DESTS.find(d => norm(d.ko) === n || norm(d.name) === n || norm(d.city) === n || d.aliases.some(a => norm(a) === n)
                       || d.aps.some(a => norm(a.code) === n || norm(a.en) === n))
-      || DESTS.find(d => n.length >= 2 && (norm(d.ko).includes(n) || d.aliases.some(a => norm(a).includes(n))));
+      || DESTS.find(d => n.length >= 2 && (norm(d.ko).includes(n) || norm(d.name).includes(n) || d.aliases.some(a => norm(a).includes(n))));
 }
 // 도시 이름·공항코드로 검색했으면 그 도시의 공항을 기본 선택
-const airportFor = (d, word) => (word && d.aps.find(a => norm(a.name).includes(norm(word)) || norm(a.en) === norm(word) || norm(a.code) === norm(word))) || d.aps[0];
-const cityOf = ap => ap.name.split(' ')[0];
-const flightHours = d => { const m = (d.aps[0].time || '').match(/(\d+)시간/); return m ? +m[1] : 99; };
+const airportFor = (d, word) => (word && d.aps.find(a => norm(a.name).includes(norm(word)) || (a.koName && norm(a.koName).includes(norm(word))) || norm(a.en) === norm(word) || norm(a.code) === norm(word))) || d.aps[0];
+const cityOf = ap => ap.city || ap.name.split(' ')[0];
+const nm = s => s.name || s.ko;   // 명소의 표시 이름
 
 // 선택한 공항(도시) 기준 명소. 같은 도시 공항(나리타→하네다 등)은 SPOT_ALIAS로 공유
 const spotCache = new Map();
 function spotsFor(d, ap) {
   const code = SPOT_ALIAS[ap?.code] || ap?.code;
   if (!code || !CITY_SPOTS[code]) return d.spots;
-  if (!spotCache.has(code)) spotCache.set(code, CITY_SPOTS[code].split(';').map(s => {
+  if (!spotCache.has(code)) spotCache.set(code, localizeSpots(code, CITY_SPOTS[code].split(';').map(s => {
     const [ko, en, desc, k, g] = s.split('|'); return { ko, en, d: desc, k: k || undefined, g: g || '' };
-  }));
+  })));
   return spotCache.get(code);
 }
 // 명소 방문 정보(spotinfo.js): 추천 시간대 · 머무는 시간 · 입장 · 메모
 const SLOT_ORDER = { 아침: 0, 오전: 1, 종일: 1, 오후: 2, 저녁: 3, 야간: 4 };
 const SLOT_START = { 아침: 8 * 60, 오전: 9.5 * 60, 종일: 9 * 60, 오후: 13.5 * 60, 저녁: 17.5 * 60, 야간: 19.5 * 60 };
+const SLOT_EN = { 아침: 'early morning', 오전: 'morning', 종일: 'full day', 오후: 'afternoon', 저녁: 'evening', 야간: 'night' };
+const metaText = v => EN && EN_META[v] || v;
 function spotMeta(s) {
   const [slot, stay, fee, note] = (s?.en && SPOT_META[s.en] || '').split('|');
-  return { slot: SLOT_ORDER[slot] != null ? slot : '오후', stay: +stay || 1.5, fee: fee || '확인 필요', note: note || '' };
+  const key = SLOT_ORDER[slot] != null ? slot : '오후';
+  return { slot: key, slotName: tx(key, SLOT_EN[key]), stay: +stay || 1.5, fee: metaText(fee || '확인 필요'), note: metaText(note || '') };
 }
 const spotGeo = s => s?.en && SPOT_GEO[s.en] || null;
 function km(a, b) {
@@ -87,16 +97,16 @@ function km(a, b) {
   const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a[0])) * Math.cos(r(b[0])) * Math.sin(dLo / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(h));
 }
-const fmtMin = m => m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 >= 5 ? ` ${Math.round(m % 60 / 5) * 5}분` : ''}`;
+const fmtMin = m => m < 60 ? tx(`${m}분`, `${m} min`) : tx(`${Math.floor(m / 60)}시간`, `${Math.floor(m / 60)}h`) + (m % 60 >= 5 ? tx(` ${Math.round(m % 60 / 5) * 5}분`, ` ${Math.round(m % 60 / 5) * 5}m`) : '');
 // 직선거리로 이동수단·시간을 대략 추정 (도보 4.5km/h, 대중교통 18km/h+대기, 차·기차 65km/h+20분)
 function travel(a, b) {
-  if (!a || !b) return { min: 30, text: '🚇 이동 약 30분' };
+  if (!a || !b) return { min: 30, text: tx('🚇 이동 약 30분', '🚇 About 30 min travel') };
   const d = km(a, b);
   if (d < 0.15) return null;
-  if (d < 1.2) { const m = Math.max(5, Math.round(d / 4.5 * 60)); return { min: m, text: `🚶 도보 약 ${fmtMin(m)}` }; }
-  if (d < 25) { const m = Math.round(d / 18 * 60 + 12); return { min: m, text: `🚇 대중교통 약 ${fmtMin(m)}` }; }
-  if (d < 450) { const m = Math.round(d / 65 * 60 + 20); return { min: m, text: `🚗 차·기차 약 ${fmtMin(m)}` }; }
-  const m = Math.round(d / 500 * 60 + 150); return { min: m, text: `✈ 항공·장거리 이동 약 ${fmtMin(m)}` };
+  if (d < 1.2) { const m = Math.max(5, Math.round(d / 4.5 * 60)); return { min: m, text: tx(`🚶 도보 약 ${fmtMin(m)}`, `🚶 Walk about ${fmtMin(m)}`) }; }
+  if (d < 25) { const m = Math.round(d / 18 * 60 + 12); return { min: m, text: tx(`🚇 대중교통 약 ${fmtMin(m)}`, `🚇 Transit about ${fmtMin(m)}`) }; }
+  if (d < 450) { const m = Math.round(d / 65 * 60 + 20); return { min: m, text: tx(`🚗 차·기차 약 ${fmtMin(m)}`, `🚗 Car or train about ${fmtMin(m)}`) }; }
+  const m = Math.round(d / 500 * 60 + 150); return { min: m, text: tx(`✈ 항공·장거리 이동 약 ${fmtMin(m)}`, `✈ Flight or long haul about ${fmtMin(m)}`) };
 }
 // 도시 중심(숙소 기준점) = 시내 명소 좌표의 평균
 function cityCenter(spots) {
@@ -111,9 +121,9 @@ const aff = (key, url) => affOn(key) ? url + (url.includes('?') ? '&' : '?') + A
 const rel = key => affOn(key) ? 'sponsored noopener' : 'noopener';
 
 function areasFor(d, ap) {
-  if (AREAS[ap.code]) return AREAS[ap.code].split(';').map(s => { const [n, desc, q] = s.split('|'); return { n, d: desc, q }; });
+  if (AREAS[ap.code]) return localizeList(EN && EN_AREAS[ap.code], AREAS[ap.code].split(';').map(s => { const [n, desc, q] = s.split('|'); return { n, d: desc, q }; }));
   if (!d.aps || ap.en === d.aps[0].en) return d.areas;   // 대표 공항과 같은 도시 (예: 나리타, 쑹산)
-  return [{ n: cityOf(ap) + ' 시내', d: '주요 명소와 교통이 편리한 중심가', q: ap.en }];
+  return [{ n: tx(cityOf(ap) + ' 시내', cityOf(ap) + ' centre'), d: tx('주요 명소와 교통이 편리한 중심가', 'Central area close to sights and transport'), q: ap.en }];
 }
 
 /* =========================================================
@@ -129,15 +139,17 @@ const saveS = () => store.set('search', S);
 const nights = () => S.trip === 'oneway' ? 0 : Math.round((parseD(S.d2) - parseD(S.d1)) / 864e5);
 const people = () => S.adults + S.children + S.infants;
 
+const paxText = (a, c, i) => [tx(`성인 ${a}`, plural(a, 'adult')), c && tx(`소아 ${c}`, plural(c, 'child', 'children')), i && tx(`유아 ${i}`, plural(i, 'infant'))].filter(Boolean).join(' · ');
 function syncForm() {
   $('#from').value = S.from;
   $$('.seg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.trip === S.trip)));
   $('#direct').checked = S.direct;
+  // 영어는 요일까지 쓰면 칸에 다 들어가지 않아 월·일만
+  const day = s => EN ? `${MON[parseD(s).getMonth()]} ${parseD(s).getDate()}` : fmtD(s);
   $('#dateBtn').innerHTML = S.trip === 'oneway'
-    ? `${fmtD(S.d1)} <small>편도</small>`
-    : `${fmtD(S.d1)} – ${fmtD(S.d2)} <small>${nights()}박</small>`;
-  const parts = [`성인 ${S.adults}`]; if (S.children) parts.push(`소아 ${S.children}`); if (S.infants) parts.push(`유아 ${S.infants}`);
-  $('#paxBtn').textContent = parts.join(' · ');
+    ? `${day(S.d1)} <small>${tx('편도', 'one way')}</small>`
+    : `${day(S.d1)} – ${day(S.d2)} <small>${nightsText(nights())}</small>`;
+  $('#paxBtn').textContent = paxText(S.adults, S.children, S.infants);
 }
 function searchChanged() {
   if (sharedPlan) sharedPlan.backup = null;   // 직접 바꾼 검색 조건은 공유받은 일정을 닫아도 유지
@@ -172,24 +184,24 @@ function openCal() {
 function renderCal() {
   const months = innerWidth < 700 ? 1 : 2, t = today();
   const a = calStart || S.d1, b = calStart ? (calHover && calHover > calStart ? calHover : null) : (S.trip === 'oneway' ? null : S.d2);
-  let html = `<div class="cal-head"><button type="button" class="cal-nav" data-m="-1" aria-label="이전 달">‹</button>
-    <b>${S.trip === 'oneway' ? '가는 날을 선택하세요' : calStart ? '오는 날을 선택하세요' : '가는 날을 선택하세요'}</b>
-    <button type="button" class="cal-nav" data-m="1" aria-label="다음 달">›</button></div><div class="cal-months">`;
+  let html = `<div class="cal-head"><button type="button" class="cal-nav" data-m="-1" aria-label="${tx('이전 달', 'Previous month')}">‹</button>
+    <b>${S.trip !== 'oneway' && calStart ? tx('오는 날을 선택하세요', 'Pick your return date') : tx('가는 날을 선택하세요', 'Pick your departure date')}</b>
+    <button type="button" class="cal-nav" data-m="1" aria-label="${tx('다음 달', 'Next month')}">›</button></div><div class="cal-months">`;
   for (let k = 0; k < months; k++) {
     const m = new Date(calBase.getFullYear(), calBase.getMonth() + k, 1);
-    html += `<div class="cal-month"><h5>${m.getFullYear()}년 ${m.getMonth() + 1}월</h5><div class="cal-grid">`
+    html += `<div class="cal-month"><h5>${tx(`${m.getFullYear()}년 ${m.getMonth() + 1}월`, `${MON[m.getMonth()]} ${m.getFullYear()}`)}</h5><div class="cal-grid">`
       + [...WD].map((w, i) => `<span class="wd${i === 0 ? ' sun' : i === 6 ? ' sat' : ''}">${w}</span>`).join('')
       + '<span></span>'.repeat(m.getDay());
     const last = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
     for (let day = 1; day <= last; day++) {
       const s = iso(new Date(m.getFullYear(), m.getMonth(), day));
       const cls = [s === a && 'start', b && s === b && 'end', b && s > a && s < b && 'in', s === t && 'today'].filter(Boolean).join(' ');
-      html += `<button type="button" class="day ${cls}" data-d="${s}" ${s < t ? 'disabled' : ''} aria-label="${m.getMonth() + 1}월 ${day}일">${day}</button>`;
+      html += `<button type="button" class="day ${cls}" data-d="${s}" ${s < t ? 'disabled' : ''} aria-label="${tx(`${m.getMonth() + 1}월 ${day}일`, `${MON[m.getMonth()]} ${day}`)}">${day}</button>`;
     }
     html += '</div></div>';
   }
   html += '</div>';
-  if (S.trip === 'round') html += `<div class="cal-foot">${[[2,'2박 3일'],[3,'3박 4일'],[4,'4박 5일'],[6,'6박 7일']].map(([n, l]) =>
+  if (S.trip === 'round') html += `<div class="cal-foot">${[[2,tx('2박 3일','2 nights')],[3,tx('3박 4일','3 nights')],[4,tx('4박 5일','4 nights')],[6,tx('6박 7일','6 nights')]].map(([n, l]) =>
     `<button type="button" class="chip sm" data-n="${n}">${l}</button>`).join('')}</div>`;
   $('#cal').innerHTML = html;
 }
@@ -211,15 +223,15 @@ $('#cal').addEventListener('mouseover', e => {
 });
 
 /* ---------- 인원 (성인/소아/유아) ---------- */
-const PAX = [['adults', '성인', '만 12세 이상', 1, 9], ['children', '소아', '만 2~11세', 0, 8], ['infants', '유아', '만 2세 미만 (좌석 없음)', 0, 4]];
+const PAX = [['adults', tx('성인', 'Adults'), tx('만 12세 이상', 'Age 12+'), 1, 9], ['children', tx('소아', 'Children'), tx('만 2~11세', 'Age 2–11'), 0, 8], ['infants', tx('유아', 'Infants'), tx('만 2세 미만 (좌석 없음)', 'Under 2 (no seat)'), 0, 4]];
 function renderPax() {
   $('#paxPop').innerHTML = PAX.map(([k, n, sub, min, max]) => {
     const lim = k === 'infants' ? Math.min(max, S.adults) : max;
     return `<div class="pax-row"><div><b>${n}</b><small>${sub}</small></div>
-      <div class="stepper"><button type="button" data-k="${k}" data-v="-1" ${S[k] <= min ? 'disabled' : ''} aria-label="${n} 줄이기">−</button>
+      <div class="stepper"><button type="button" data-k="${k}" data-v="-1" ${S[k] <= min ? 'disabled' : ''} aria-label="${tx(`${n} 줄이기`, `Fewer ${n}`)}">−</button>
       <output aria-live="polite">${S[k]}</output>
-      <button type="button" data-k="${k}" data-v="1" ${S[k] >= lim ? 'disabled' : ''} aria-label="${n} 늘리기">+</button></div></div>`;
-  }).join('') + `<button type="button" class="pax-done">완료</button>`;
+      <button type="button" data-k="${k}" data-v="1" ${S[k] >= lim ? 'disabled' : ''} aria-label="${tx(`${n} 늘리기`, `More ${n}`)}">+</button></div></div>`;
+  }).join('') + `<button type="button" class="pax-done">${tx('완료', 'Done')}</button>`;
 }
 $('#paxBtn').addEventListener('click', () => { if ($('#paxPop').hidden) { renderPax(); openPop('paxPop'); } else $('#paxPop').hidden = true; });
 // 날짜·인원 칸의 빈 곳(칸 제목 포함)을 눌러도 열리게 → 모바일 터치 영역 확대
@@ -239,23 +251,23 @@ $('#paxPop').addEventListener('click', e => {
 const hasKo = s => /[가-힣]/.test(s);
 const SUG = [];
 DESTS.forEach(d => {
-  SUG.push({ t: 0, label: d.ko, sub: d.tagline, d, keys: [d.ko, d.city, d.slug, ...d.aliases] });
+  SUG.push({ t: 0, label: d.name, sub: d.tagline, d, keys: [d.ko, d.name, d.city, d.slug, ...d.aliases] });
   const seen = new Map();
   const addCity = (label, keys) => {
-    if (label === d.ko) return;
+    if (label === d.name) return;
     if (seen.has(label)) return seen.get(label).keys.push(...keys);   // 같은 도시면 검색어(영문·공항코드)만 합침
-    const ap = airportFor(d, label), item = { t: 1, label, sub: `${d.ko}${ap && norm(ap.name).includes(norm(label)) ? ' · ' + ap.code : ''}`, d, word: label, keys };
+    const ap = airportFor(d, label), item = { t: 1, label, sub: `${d.name}${ap && norm(ap.name).includes(norm(label)) ? ' · ' + ap.code : ''}`, d, word: label, keys };
     seen.set(label, item); SUG.push(item);
   };
-  d.aliases.filter(hasKo).forEach(a => addCity(a, [a]));
-  d.aps.forEach(a => addCity(cityOf(a), [a.name, a.en, a.code]));
+  if (!EN) d.aliases.filter(hasKo).forEach(a => addCity(a, [a]));
+  d.aps.forEach(a => addCity(cityOf(a), [a.name, a.koName || a.name, a.en, a.code]));
   const seenSpot = new Set();   // 명소는 해당 도시(공항)와 함께 기억 → 고르면 그 도시로 바로 이동
   d.aps.forEach(a => spotsFor(d, a).forEach(s => {
     if (seenSpot.has(s.ko)) return; seenSpot.add(s.ko);
-    SUG.push({ t: 2, label: s.ko, sub: `${d.ko} ${cityOf(a)} · ${s.d}`, d, ap: a.code, keys: [s.ko, s.en] });
+    SUG.push({ t: 2, label: nm(s), sub: `${d.name} ${cityOf(a)} · ${s.d}`, d, ap: a.code, keys: [s.ko, nm(s), s.en] });
   }));
 });
-const KIND = ['국가', '도시', '명소'];
+const KIND = tx(['국가', '도시', '명소'], ['Country', 'City', 'Sight']);
 let sugItems = [], sugIdx = -1;
 function suggest() {
   const q = $('#q').value.trim(), n = norm(q);
@@ -271,16 +283,16 @@ function suggest() {
     }).filter(x => x.score >= 0).sort((a, b) => a.score - b.score || a.s.t - b.s.t).slice(0, 8).map(x => x.s);
   }
   sugIdx = n && sugItems.length ? 0 : -1;
-  const hl = label => { const i = label.indexOf(q);
+  const hl = label => { const i = label.toLowerCase().indexOf(q.toLowerCase());
     return q && i >= 0 ? esc(label.slice(0, i)) + '<mark>' + esc(label.slice(i, i + q.length)) + '</mark>' + esc(label.slice(i + q.length)) : esc(label); };
   const hasRecent = !n && store.get('recent', []).length;
-  $('#suggest').innerHTML = (n ? '' : `<li class="head">${hasRecent ? '최근 본 · 인기 여행지' : '인기 여행지'}</li>`)
+  $('#suggest').innerHTML = (n ? '' : `<li class="head">${hasRecent ? tx('최근 본 · 인기 여행지', 'Recent and popular') : tx('인기 여행지', 'Popular destinations')}</li>`)
     + (sugItems.length ? sugItems.map((s, i) => `
       <li class="opt${i === sugIdx ? ' on' : ''}" role="option" id="sug${i}" aria-selected="${i === sugIdx}" data-i="${i}">
         <span class="ic">${s.t === 0 ? s.d.flagImg : s.t === 1 ? '📍' : '📸'}</span>
         <span class="txt"><b>${hl(s.label)}</b><small>${esc(s.sub)}</small></span>
         <span class="kind">${KIND[s.t]}</span></li>`).join('')
-      : `<li class="head empty-sug">'${esc(q)}'에 맞는 여행지가 없어요.<br>Enter를 누르면 영상을 직접 찾아볼게요.</li>`);
+      : `<li class="head empty-sug">${tx(`'${esc(q)}'에 맞는 여행지가 없어요.<br>Enter를 누르면 영상을 직접 찾아볼게요.`, `No destination matches '${esc(q)}'.<br>Press Enter to search for videos.`)}</li>`);
   $('#suggest').hidden = false;
   $('#q').setAttribute('aria-expanded', 'true');
   $('#q').setAttribute('aria-activedescendant', sugIdx >= 0 ? 'sug' + sugIdx : '');
@@ -431,7 +443,7 @@ async function fileCredits(files) {
       (j.query?.pages || []).forEach(pg => {
         const info = pg.imageinfo?.[0]; if (!info) return;
         const f = (back[pg.title] || pg.title).replace(/^File:/, ''), m = info.extmetadata || {}, a = textOf(m.Artist?.value);
-        const v = { a: a ? (a.length > 40 ? a.slice(0, 39) + '…' : a) : '작성자 정보 없음', l: m.LicenseShortName?.value || '라이선스 확인 필요',
+        const v = { a: a ? (a.length > 40 ? a.slice(0, 39) + '…' : a) : tx('작성자 정보 없음', 'Unknown author'), l: m.LicenseShortName?.value || tx('라이선스 확인 필요', 'Check licence'),
                     u: info.descriptionurl || 'https://commons.wikimedia.org/wiki/File:' + enc(f) };
         out[f] = v; store.set('c:cr:' + f, { t: Date.now(), v });
       });
@@ -456,7 +468,7 @@ function toggleSaved(c, s) {
   const list = getSaved(), k = savedKey(c, s), i = list.indexOf(k);
   i >= 0 ? list.splice(i, 1) : list.push(k);
   store.set('saved', list); updateSavedCount();
-  toast(i >= 0 ? `'${s}'을(를) 보관함에서 뺐어요` : `'${s}'을(를) 보관함에 담았어요 ♥`);
+  toast(i >= 0 ? tx(`'${s}'을(를) 보관함에서 뺐어요`, `Removed '${spotTitle(s)}' from saved`) : tx(`'${s}'을(를) 보관함에 담았어요 ♥`, `Saved '${spotTitle(s)}' ♥`));
   return i < 0;
 }
 const savedFor = d => getSaved().filter(k => k.startsWith(d.ko + '|')).map(k => k.split('|')[1]);
@@ -464,7 +476,8 @@ function updateSavedCount() { $('#savedCount').textContent = getSaved().length; 
 function addRecent(ko) {
   const r = store.get('recent', []).filter(x => x !== ko); r.unshift(ko); store.set('recent', r.slice(0, 8));
 }
-const CHECKS = ['여권 유효기간 (6개월 이상)', '비자·입국 서류', '항공권 예약', '숙소 예약', '환전·해외결제 카드', 'eSIM·유심 / 로밍', '여행자보험', '충전기·변환 플러그'];
+const CHECKS = tx(['여권 유효기간 (6개월 이상)', '비자·입국 서류', '항공권 예약', '숙소 예약', '환전·해외결제 카드', 'eSIM·유심 / 로밍', '여행자보험', '충전기·변환 플러그'],
+  ['Passport valid 6+ months', 'Visa & entry papers', 'Book flights', 'Book stays', 'Cash & travel card', 'eSIM / SIM / roaming', 'Travel insurance', 'Chargers & plug adapter']);
 
 /* =========================================================
    화면 전환 (주소: ?d=japan&ap=KIX · 공유 가능)
@@ -472,7 +485,7 @@ const CHECKS = ['여권 유효기간 (6개월 이상)', '비자·입국 서류',
 let current = null, curAp = null;
 function setURL(push) {
   const u = new URL(location.href); u.hash = sharedPlan?.hash || '';   // 공유받은 일정은 새로고침해도 다시 보이게
-  u.search = current ? (current.custom ? `?q=${enc(current.ko)}` : `?d=${current.slug}${curAp && curAp !== current.aps[0] ? '&ap=' + curAp.code : ''}`) : '';
+  u.search = withLang(current ? (current.custom ? `?q=${enc(current.ko)}` : `?d=${current.slug}${curAp && curAp !== current.aps[0] ? '&ap=' + curAp.code : ''}`) : '');
   history[push ? 'pushState' : 'replaceState'](null, '', u);
 }
 // 검색엔진용 대표 주소(canonical): 첫 화면은 사이트 주소, 여행지는 ?d=여행지
@@ -480,11 +493,13 @@ const SITE = new URL('./', location.href).href;   // 예: https://…/trip-reels
 function setCanonical(path) {
   let l = $('link[rel="canonical"]');
   if (!l) { l = document.createElement('link'); l.rel = 'canonical'; document.head.append(l); }
-  l.href = SITE + path;
+  l.href = SITE + (EN ? path + (path.includes('?') ? '&' : '?') + 'lang=en' : path);
 }
 // 공유 주소: 국가 페이지(/japan/)로 공유해야 카카오톡 등에서 여행지별 제목·설명 미리보기가 보임 (tools/build-pages.cjs가 만든 페이지)
+// 영어판은 en/ 페이지로 공유해야 미리보기가 영어로 보임
+const sharePage = () => EN ? `${SITE}en/?d=${current.info.slug}` : `${SITE}${current.info.slug}/`;
 const shareURL = () => current && !current.custom && current.info.slug
-  ? `${SITE}${current.info.slug}/${curAp && curAp !== current.aps[0] ? '#ap=' + curAp.code : ''}` : location.href;
+  ? `${sharePage()}${curAp && curAp !== current.aps[0] ? '#ap=' + curAp.code : ''}` : location.href;
 function route() {
   const p = new URLSearchParams(location.search);
   const legacy = decodeURIComponent(location.hash.slice(1));   // 예전 주소(#일본) 호환
@@ -498,7 +513,7 @@ function route() {
     render(d, null, { push: false, ap, shared: !!sh });
     // 공유받은 일정은 화면 위쪽 내용이 그려진 뒤 일정 위치로 이동
     if (sh) setTimeout(() => $('#sec-plan')?.scrollIntoView({ behavior: 'smooth' }), 900);
-    else if (hash.has('p')) toast('일정 링크를 읽지 못했어요');
+    else if (hash.has('p')) toast(tx('일정 링크를 읽지 못했어요', 'Could not read the itinerary link'));
     return;
   }
   if (p.get('q')) return render(p.get('q'), null, { push: false });
@@ -510,34 +525,34 @@ addEventListener('popstate', route);
 /* =========================================================
    첫 화면
    ========================================================= */
-const chip = (d, hot) => `<button type="button" class="chip" data-go="${d.ko}">${d.flagImg}${d.ko}${hot ? '<span class="hot">HOT</span>' : ''}</button>`;
+const chip = (d, hot) => `<button type="button" class="chip" data-go="${d.ko}">${d.flagImg}${d.name}${hot ? '<span class="hot">HOT</span>' : ''}</button>`;
 function renderHome() {
   endShared(); current = null; curAp = null; stopVideos();
-  document.title = '트립릴스 · 여행지 영상 미리보기';
+  document.title = tx('떠날지도 · 여행지 영상 미리보기', 'Maybe Go · See places on video');
   setCanonical('');
   const m = new Date().getMonth() + 1;
   const recent = store.get('recent', []).map(destByKo).filter(Boolean);
   const saved = getSaved();
   const goodNow = DESTS.filter(d => d.info.best?.includes(m)).slice(0, 10);
-  const easy = DESTS.filter(d => /무비자/.test(d.visa) && flightHours(d) < 5).sort((a, b) => flightHours(a) - flightHours(b));
+  const easy = DESTS.filter(d => d.visaFree && d.hours < 5).sort((a, b) => a.hours - b.hours);
   let html = tripSections();
 
-  if (recent.length) html += `<section class="home-sec"><h2 class="sec-h">최근 본 여행지</h2><div class="chips">${recent.map(d => chip(d)).join('')}</div></section>`;
+  if (recent.length) html += `<section class="home-sec"><h2 class="sec-h">${tx('최근 본 여행지', 'Recently viewed')}</h2><div class="chips">${recent.map(d => chip(d)).join('')}</div></section>`;
   if (saved.length) html += savedSection();
 
-  html += `<section class="home-sec"><h2 class="sec-h">🔥 지금 인기 여행지</h2>
+  html += `<section class="home-sec"><h2 class="sec-h">🔥 ${tx('지금 인기 여행지', 'Popular right now')}</h2>
     <div class="carousel" role="list">${POPULAR.map(destByKo).map(d => { const file = COVER_IMG[d.ko] || SPOT_IMG[spotsFor(d, d.aps[0])[0].en]; return `
       <div class="cover-item" role="listitem"><button type="button" class="cover" data-go="${d.ko}" data-file="${esc(file || '')}">
         <img class="cover-img" src="${photoUrl(file, 640)}" alt="" loading="lazy" decoding="async"><span class="hot">HOT</span><small class="credit" aria-hidden="true"></small>
-        <span class="cover-txt"><b>${d.flagImg}${d.ko}</b><small>${esc(d.tagline)}</small><em>✈ ${esc(d.aps[0].time)}</em></span>
+        <span class="cover-txt"><b>${d.flagImg}${d.name}</b><small>${esc(d.tagline)}</small><em>✈ ${esc(d.aps[0].time)}</em></span>
       </button></div>`; }).join('')}</div></section>`;
 
-  html += `<section class="home-sec"><h2 class="sec-h">📅 ${m}월에 가기 좋은 곳</h2><div class="chips">${goodNow.map(d => chip(d)).join('')}</div></section>
-    <section class="home-sec"><h2 class="sec-h">🛂 무비자 + 비행 5시간 이내</h2><div class="chips">${easy.map(d =>
-      `<button type="button" class="chip" data-go="${d.ko}">${d.flagImg}${d.ko}<small>${esc(d.aps[0].time.replace('약 ', ''))}</small></button>`).join('')}</div></section>`;
+  html += `<section class="home-sec"><h2 class="sec-h">📅 ${tx(`${m}월에 가기 좋은 곳`, `Great places to visit in ${MON[m - 1]}`)}</h2><div class="chips">${goodNow.map(d => chip(d)).join('')}</div></section>
+    <section class="home-sec"><h2 class="sec-h">🛂 ${tx('무비자 + 비행 5시간 이내', 'Visa-free and under 5 hours (Korean passport)')}</h2><div class="chips">${easy.map(d =>
+      `<button type="button" class="chip" data-go="${d.ko}">${d.flagImg}${d.name}<small>${esc(d.aps[0].time.replace(/^(약|about) /, ''))}</small></button>`).join('')}</div></section>`;
 
-  html += `<section class="home-sec"><h2 class="sec-h">🌏 전체 여행지</h2>${REGIONS.map(([r, list]) =>
-    `<div class="region"><h3>${r}</h3><div class="chips">${list.map(ko => chip(destByKo(ko), POPULAR.includes(ko))).join('')}</div></div>`).join('')}</section>`;
+  html += `<section class="home-sec"><h2 class="sec-h">🌏 ${tx('전체 여행지', 'All destinations')}</h2>${REGIONS.map(([r, list]) =>
+    `<div class="region"><h3>${tx(r, EN_REGIONS[r] || r)}</h3><div class="chips">${list.map(ko => chip(destByKo(ko), POPULAR.includes(ko))).join('')}</div></div>`).join('')}</section>`;
 
   $('#main').innerHTML = html;
   $$('.carousel').forEach(dragScroll);
@@ -593,10 +608,10 @@ async function showCoverCredits() {
 function savedSection() {
   const groups = {};
   getSaved().forEach(k => { const [c, s] = k.split('|'); (groups[c] ||= []).push(s); });
-  return `<section class="home-sec" id="savedSec"><h2 class="sec-h">♥ 내 여행 보관함</h2><div class="saved-list">${Object.entries(groups).map(([c, list]) => {
+  return `<section class="home-sec" id="savedSec"><h2 class="sec-h">♥ ${tx('내 여행 보관함', 'Saved places')}</h2><div class="saved-list">${Object.entries(groups).map(([c, list]) => {
     const d = destByKo(c); if (!d) return '';
-    return `<div class="saved-row"><button type="button" class="saved-c" data-go="${c}">${d.flagImg}<b>${c}</b><small>${list.length}곳 · 일정 보기 →</small></button>
-      <div class="chips">${list.map(s => `<span class="chip static">${esc(s)}<button type="button" class="x-sm" data-unsave="${esc(c)}|${esc(s)}" aria-label="${esc(s)} 보관함에서 빼기">×</button></span>`).join('')}</div></div>`;
+    return `<div class="saved-row"><button type="button" class="saved-c" data-go="${c}">${d.flagImg}<b>${d.name}</b><small>${tx(`${list.length}곳 · 일정 보기 →`, `${plural(list.length, 'place')} · View plan →`)}</small></button>
+      <div class="chips">${list.map(s => `<span class="chip static">${esc(spotTitle(s))}<button type="button" class="x-sm" data-unsave="${esc(c)}|${esc(s)}" aria-label="${esc(tx(`${s} 보관함에서 빼기`, `Remove ${spotTitle(s)} from saved`))}">×</button></span>`).join('')}</div></div>`;
   }).join('')}</div></section>`;
 }
 /* ---------- 저장한 여행 (여러 개) ----------
@@ -625,7 +640,9 @@ function getTrips() {
 const sameDates = t => t.trip === S.trip && t.d1 === S.d1 && (t.trip === 'oneway' || t.d2 === S.d2);
 const tripAt = code => getTrips().find(t => t.ap === code && sameDates(t));   // 지금 보는 공항·날짜의 저장한 여행
 const planKey = () => tripAt(curAp.code)?.id || curAp.code;
-const tripDates = t => `${fmtD(t.d1)}${isOneway(t) ? ' 편도' : ' – ' + fmtD(t.d2)}`;
+const tripDates = t => `${fmtD(t.d1)}${isOneway(t) ? tx(' 편도', ' · one way') : ' – ' + fmtD(t.d2)}`;
+// 저장한 여행의 도시 이름은 저장할 때의 언어와 관계없이 지금 언어로
+const tripCity = t => { const a = destByKo(t.ko)?.aps.find(x => x.code === t.ap); return a ? cityOf(a) : t.city || t.ko; };
 // 지금 공항·검색 날짜로 새 여행을 저장
 function addTrip() {
   const t = { id: newTripId(), ko: current.ko, ap: curAp.code, city: cityOf(curAp), trip: S.trip, d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2, checks: {} };
@@ -645,10 +662,10 @@ function applyTripDates(t) {
 function tripCard(t, open) {
   const d = destByKo(t.ko), n = dday(t.d1), done = CHECKS.filter((_, i) => t.checks?.[i]).length;
   return `<div class="trip-card" data-trip-id="${esc(t.id)}">
-    <div class="trip-top"><div><span class="dday">${n > 0 ? 'D-' + n : n === 0 ? 'D-DAY' : '여행 중'}</span>
-      <h2>${d.flagImg}${esc(t.city || d.ko)} 여행</h2><p>${tripDates(t)}</p></div>
-      <div class="trip-acts"><button type="button" class="btn" data-open-trip="${esc(t.id)}">여행 보기</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">삭제</button></div></div>
-    <details ${open ? 'open' : ''}><summary>준비 체크리스트 <small>${done}/${CHECKS.length}</small></summary>
+    <div class="trip-top"><div><span class="dday">${n > 0 ? 'D-' + n : n === 0 ? 'D-DAY' : tx('여행 중', 'On trip')}</span>
+      <h2>${d.flagImg}${esc(tx(`${tripCity(t)} 여행`, `Trip to ${tripCity(t)}`))}</h2><p>${tripDates(t)}</p></div>
+      <div class="trip-acts"><button type="button" class="btn" data-open-trip="${esc(t.id)}">${tx('여행 보기', 'Open trip')}</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">${tx('삭제', 'Delete')}</button></div></div>
+    <details ${open ? 'open' : ''}><summary>${tx('준비 체크리스트', 'Packing & prep checklist')} <small>${done}/${CHECKS.length}</small></summary>
       <div class="checks">${CHECKS.map((c, i) => `<label class="check-item"><input type="checkbox" data-ci="${i}" ${t.checks?.[i] ? 'checked' : ''}> ${c}</label>`).join('')}</div></details>
   </div>`;
 }
@@ -656,23 +673,23 @@ function tripCard(t, open) {
 function tripSections() {
   const trips = getTrips().filter(t => destByKo(t.ko)).sort((a, b) => a.d1.localeCompare(b.d1));
   const next = trips.filter(t => tripEnd(t) >= today()), past = trips.filter(t => tripEnd(t) < today()).reverse();
-  return (next.length ? `<section class="home-sec trips">${next.length > 1 ? `<h2 class="sec-h">✈ 내 여행 ${next.length}개</h2>` : ''}${next.map((t, i) => tripCard(t, i === 0)).join('')}</section>` : '')
-    + (past.length ? `<section class="home-sec"><h2 class="sec-h">🧳 다녀온 여행</h2><div class="past-trips">${past.map(t => `
-      <div class="past-trip">${destByKo(t.ko).flagImg}<b>${esc(t.city || t.ko)}</b><small>${tripDates(t)}</small>
-        <button type="button" class="btn ghost" data-open-trip="${esc(t.id)}">일정 보기</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">삭제</button></div>`).join('')}</div></section>` : '');
+  return (next.length ? `<section class="home-sec trips">${next.length > 1 ? `<h2 class="sec-h">✈ ${tx(`내 여행 ${next.length}개`, `My trips (${next.length})`)}</h2>` : ''}${next.map((t, i) => tripCard(t, i === 0)).join('')}</section>` : '')
+    + (past.length ? `<section class="home-sec"><h2 class="sec-h">🧳 ${tx('다녀온 여행', 'Past trips')}</h2><div class="past-trips">${past.map(t => `
+      <div class="past-trip">${destByKo(t.ko).flagImg}<b>${esc(tripCity(t))}</b><small>${tripDates(t)}</small>
+        <button type="button" class="btn ghost" data-open-trip="${esc(t.id)}">${tx('일정 보기', 'View plan')}</button><button type="button" class="btn ghost" data-del-trip="${esc(t.id)}">${tx('삭제', 'Delete')}</button></div>`).join('')}</div></section>` : '');
 }
 $('#main').addEventListener('click', e => {
   const open = e.target.closest('[data-open-trip]');
   if (open) {
     const t = getTrips().find(x => x.id === open.dataset.openTrip); if (!t) return;
-    applyTripDates(t); $('#q').value = t.ko;
+    applyTripDates(t); $('#q').value = destByKo(t.ko).name;
     return render(destByKo(t.ko), null, { ap: t.ap });
   }
   const del = e.target.closest('[data-del-trip]'); if (!del) return;
-  if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = '한 번 더 누르면 삭제'; return; }   // 일정까지 지워지므로 두 번 확인
+  if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = tx('한 번 더 누르면 삭제', 'Click again to delete'); return; }   // 일정까지 지워지므로 두 번 확인
   const id = del.dataset.delTrip;
   store.set('trips', getTrips().filter(t => t.id !== id)); moveTripData(id);
-  toast('여행을 삭제했어요'); renderHome();
+  toast(tx('여행을 삭제했어요', 'Trip deleted')); renderHome();
 });
 $('#main').addEventListener('change', e => {
   const cb = e.target.closest('.trip-card [data-ci]'); if (!cb) return;
@@ -685,7 +702,7 @@ $('#main').addEventListener('change', e => {
 /* =========================================================
    여행지 화면
    ========================================================= */
-const SECTIONS = [['spots', '🎬 명소'], ['info', '📋 정보'], ['plan', '🗓 일정'], ['food', '🍜 먹거리'], ['flights', '✈️ 항공'], ['hotels', '🏨 호텔'], ['more', '🎟 투어·준비']];
+const SECTIONS = [['spots', tx('🎬 명소', '🎬 Sights')], ['info', tx('📋 정보', '📋 Info')], ['plan', tx('🗓 일정', '🗓 Plan')], ['food', tx('🍜 먹거리', '🍜 Food')], ['flights', tx('✈️ 항공', '✈️ Flights')], ['hotels', tx('🏨 호텔', '🏨 Hotels')], ['more', tx('🎟 투어·준비', '🎟 Tours & prep')]];
 function render(q, word, opts = {}) {
   hideSuggest(); $$('.pop').forEach(p => p.hidden = true); stopVideos();
   if (!opts.shared) endShared();
@@ -695,41 +712,41 @@ function render(q, word, opts = {}) {
     curAp = (opts.ap && d.aps.find(a => a.code === opts.ap)) || airportFor(d, word ?? (typeof q === 'string' ? q : null));
     addRecent(d.ko);
   } else {
-    current = { ko: q, custom: true, flagImg: '📍', tagline: '검색한 여행지의 영상을 모아봤어요', spots: null, info: {}, aliases: [],
-      aps: [{ code: '', name: q, en: q, time: '' }], areas: [{ n: q + ' 중심가', d: '주요 명소 접근성이 좋은 지역' }] };
+    current = { ko: q, name: q, custom: true, flagImg: '📍', tagline: tx('검색한 여행지의 영상을 모아봤어요', 'Videos found for your search'), spots: null, info: {}, aliases: [],
+      aps: [{ code: '', name: q, city: q, en: q, time: '' }], areas: [{ n: tx(q + ' 중심가', q + ' centre'), d: tx('주요 명소 접근성이 좋은 지역', 'Handy for the main sights') }] };
     curAp = current.aps[0];
   }
   const c = current, I = c.info, m = new Date().getMonth() + 1;
   setURL(opts.push !== false);
-  document.title = `${c.ko} 여행 · 트립릴스`;
+  document.title = tx(`${c.ko} 여행 · 떠날지도`, `${c.name} travel · Maybe Go`);
   setCanonical(c.custom ? '' : '?d=' + c.slug);
-  if (!$('#q').value || opts.push === false) $('#q').value = c.ko;
+  if (!$('#q').value || opts.push === false) $('#q').value = c.name;
 
   $('#main').innerHTML = `
     <div class="dest-head">
       <div>
-        <h2>${c.flagImg}${esc(c.ko)}<span id="seasonBadge"></span></h2>
+        <h2>${c.flagImg}${esc(c.name)}<span id="seasonBadge"></span></h2>
         <p>${esc(c.tagline)}</p>
       </div>
       <div class="head-acts">
-        ${c.custom ? '' : '<button type="button" class="btn" id="tripSave">✈ 내 여행으로 저장</button>'}
-        <button type="button" class="btn ghost" id="shareBtn">공유</button>
+        ${c.custom ? '' : '<button type="button" class="btn" id="tripSave"></button>'}
+        <button type="button" class="btn ghost" id="shareBtn">${tx('공유', 'Share')}</button>
       </div>
     </div>
     ${c.custom ? '' : `<div class="facts">
-      <div class="fact"><span class="fi">🛂</span><div><b>입국</b>${esc(c.visa)}</div></div>
-      <div class="fact fx" id="fx"><span class="fi">💱</span><div><b>환율</b>불러오는 중…</div></div>
-      <div class="fact" id="wxFact"><span class="fi">🌤</span><div><b>날씨</b>불러오는 중…</div></div>
-      <div class="fact"><span class="fi">🕐</span><div><b>시차</b>${esc(c.tz)}</div></div>
-      ${I.plug ? `<div class="fact ${I.ok ? 'good' : 'warn'}"><span class="fi">🔌</span><div><b>플러그 · 전압</b>${esc(I.plug)} ${esc(I.volt)}${I.ok ? ' · 그대로 사용' : ' · 변환 플러그 필요'}</div></div>` : ''}
-      ${I.lang ? `<div class="fact"><span class="fi">🗣</span><div><b>언어</b>${esc(I.lang)}</div></div>` : ''}
-      ${I.tip ? `<div class="fact"><span class="fi">💁</span><div><b>팁</b>${esc(I.tip)}</div></div>` : ''}
+      <div class="fact"><span class="fi">🛂</span><div><b>${tx('입국', 'Entry (Korean passport)')}</b>${esc(c.visa)}</div></div>
+      <div class="fact fx" id="fx"><span class="fi">💱</span><div><b>${tx('환율', 'Exchange rate')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
+      <div class="fact" id="wxFact"><span class="fi">🌤</span><div><b>${tx('날씨', 'Weather')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
+      <div class="fact"><span class="fi">🕐</span><div><b>${tx('시차', 'Time difference')}</b>${esc(c.tz)}</div></div>
+      ${I.plug ? `<div class="fact ${I.ok ? 'good' : 'warn'}"><span class="fi">🔌</span><div><b>${tx('플러그 · 전압', 'Plug · voltage')}</b>${esc(I.plug)} ${esc(I.volt)}${I.ok ? tx(' · 그대로 사용', ' · Korean plugs fit') : tx(' · 변환 플러그 필요', ' · adapter needed for Korean plugs')}</div></div>` : ''}
+      ${I.lang ? `<div class="fact"><span class="fi">🗣</span><div><b>${tx('언어', 'Language')}</b>${esc(I.lang)}</div></div>` : ''}
+      ${I.tip ? `<div class="fact"><span class="fi">💁</span><div><b>${tx('팁', 'Tipping')}</b>${esc(I.tip)}</div></div>` : ''}
     </div>`}
-    <nav class="tabs" aria-label="여행지 메뉴">${SECTIONS.filter(([id]) => !(c.custom && ['plan'].includes(id)))
+    <nav class="tabs" aria-label="${tx('여행지 메뉴', 'Destination menu')}">${SECTIONS.filter(([id]) => !(c.custom && ['plan'].includes(id)))
       .map(([id, l]) => `<a class="tab" href="#sec-${id}" data-sec="${id}">${l}</a>`).join('')}</nav>
     <section class="block" id="sec-spots" aria-labelledby="h-spots">
-      <div class="block-title"><h3 id="h-spots">🎬 <span id="spotCity">${esc(c.custom ? c.ko : cityOf(curAp))}</span> 명소 숏폼</h3>
-        <button type="button" class="btn reels" id="reelsBtn">▶ 릴스로 몰아보기</button></div>
+      <div class="block-title"><h3 id="h-spots">🎬 <span id="spotCity">${esc(c.custom ? c.ko : cityOf(curAp))}</span> ${tx('명소 숏폼', 'sights on video')}</h3>
+        <button type="button" class="btn reels" id="reelsBtn">▶ ${tx('릴스로 몰아보기', 'Watch as reels')}</button></div>
       <div class="grid" id="grid"></div>
     </section>
     <section class="block" id="sec-info"></section>
@@ -751,28 +768,28 @@ function render(q, word, opts = {}) {
 
 function saveTrip() {
   if (sharedHere()) return keepShared($('#tripSave'));   // 공유받은 일정을 보는 중이면 그 일정까지 함께 저장
-  if (tripAt(curAp.code)) return toast('이 날짜의 여행은 이미 저장돼 있어요');
+  if (tripAt(curAp.code)) return toast(tx('이 날짜의 여행은 이미 저장돼 있어요', 'A trip for these dates is already saved'));
   const t = addTrip();
   moveTripData(curAp.code, t.id);   // 저장 전에 편집한 일정·항공 시각은 이 여행의 것
   renderPlan();
-  toast(`${t.city} 여행을 저장했어요 · 첫 화면에서 D-${Math.max(0, dday(t.d1))}와 체크리스트를 볼 수 있어요`);
+  toast(tx(`${t.city} 여행을 저장했어요 · 첫 화면에서 D-${Math.max(0, dday(t.d1))}와 체크리스트를 볼 수 있어요`, `Saved your ${t.city} trip · see the countdown and checklist on the home page`));
 }
 // 저장 버튼 문구: 지금 날짜의 여행이 저장돼 있는지에 따라
 function updateTripButton() {
   const b = $('#tripSave'); if (!b) return;
   delete b.dataset.sure;
-  b.textContent = !sharedHere() && tripAt(curAp.code) ? '✓ 저장한 여행' : getTrips().some(t => t.ap === curAp.code) ? '✈ 이 날짜로 새 여행 저장' : '✈ 내 여행으로 저장';
+  b.textContent = !sharedHere() && tripAt(curAp.code) ? tx('✓ 저장한 여행', '✓ Saved trip') : getTrips().some(t => t.ap === curAp.code) ? tx('✈ 이 날짜로 새 여행 저장', '✈ Save a new trip for these dates') : tx('✈ 내 여행으로 저장', '✈ Save to my trips');
 }
-const share = () => shareLink(shareURL(), `${current.ko} 여행 · 트립릴스`, `${current.ko} 명소를 영상으로 미리 보기`, '링크를 복사했어요');
+const share = () => shareLink(shareURL(), tx(`${current.ko} 여행 · 떠날지도`, `${current.name} travel · Maybe Go`), tx(`${current.ko} 명소를 영상으로 미리 보기`, `Preview ${current.name} sights on video`), tx('링크를 복사했어요', 'Link copied'));
 async function shareLink(url, title, text, done) {
   try {
     if (navigator.share) return await navigator.share({ title, text, url });
     await navigator.clipboard.writeText(url); toast(done);
-  } catch (e) { if (e?.name !== 'AbortError') prompt('아래 링크를 복사하세요', url); }
+  } catch (e) { if (e?.name !== 'AbortError') prompt(tx('아래 링크를 복사하세요', 'Copy the link below'), url); }
 }
 
 /* ---------- 명소 카드 ---------- */
-const ytLink = name => 'https://www.youtube.com/results?search_query=' + enc(name + ' 여행 shorts');
+const ytLink = name => 'https://www.youtube.com/results?search_query=' + enc(name + tx(' 여행 shorts', ' travel shorts'));
 const mapLink = (name, city) => 'https://www.google.com/maps/search/?api=1&query=' + enc(name + (city ? ' ' + city : ''));
 let loader, player;
 async function renderSpots(focusSpot) {
@@ -780,7 +797,7 @@ async function renderSpots(focusSpot) {
   let spots = c.custom ? c.spots : spotsFor(c, curAp);
   if ($('#spotCity')) $('#spotCity').textContent = c.custom ? c.ko : cityOf(curAp);
   if (!spots) {   // 데이터에 없는 여행지: Commons에서 직접 검색
-    grid.innerHTML = '<div class="state">🔎 영상을 찾는 중…</div>';
+    grid.innerHTML = `<div class="state">🔎 ${tx('영상을 찾는 중…', 'Searching for videos…')}</div>`;
     let vids = [], term = c.ko;
     try {
       // Commons 파일 이름은 대부분 영어라, 한글 지명은 영문 지명으로 바꿔 검색 (예: 괌 → Guam)
@@ -789,25 +806,26 @@ async function renderSpots(focusSpot) {
     } catch {}
     if (current !== c) return;
     if (!vids.length) {
-      grid.innerHTML = `<div class="state"><b>🧭</b><p>'${esc(c.ko)}${term !== c.ko ? ` (${esc(term)})` : ''}' 영상을 찾지 못했어요.</p>
-        <p class="muted">영문 지명(예: Bali, Prague)으로 검색하거나 YouTube에서 찾아보세요.</p>
-        <a class="btn" href="${ytLink(c.ko)}" target="_blank" rel="noopener">▶ YouTube 쇼츠에서 보기</a></div>`;
+      const label = `'${esc(c.ko)}${term !== c.ko ? ` (${esc(term)})` : ''}'`;
+      grid.innerHTML = `<div class="state"><b>🧭</b><p>${tx(`${label} 영상을 찾지 못했어요.`, `No videos found for ${label}.`)}</p>
+        <p class="muted">${tx('영문 지명(예: Bali, Prague)으로 검색하거나 YouTube에서 찾아보세요.', 'Try another spelling (e.g. Bali, Prague) or search YouTube.')}</p>
+        <a class="btn" href="${ytLink(c.ko)}" target="_blank" rel="noopener">▶ ${tx('YouTube 쇼츠에서 보기', 'See YouTube Shorts')}</a></div>`;
       $('#reelsBtn').hidden = true; return;
     }
-    spots = c.spots = vids.map(v => ({ ko: v.title, en: null, d: '', preset: [v] }));
+    spots = c.spots = vids.map(v => ({ ko: v.title, name: v.title, en: null, d: '', preset: [v] }));
   }
   $('#reelsBtn').hidden = false;
   grid.innerHTML = spots.map((s, i) => `
-    <article class="vcard" data-i="${i}" tabindex="0" aria-label="${esc(s.ko)} 영상 크게 보기">
+    <article class="vcard" data-i="${i}" tabindex="0" aria-label="${esc(tx(`${s.ko} 영상 크게 보기`, `Watch ${nm(s)}`))}">
       <div class="media"><div class="skeleton"></div></div>
       <div class="top">
-        <span class="badge">불러오는 중</span>
-        ${c.custom ? '' : `<button type="button" class="heart${isSaved(c.ko, s.ko) ? ' on' : ''}" aria-pressed="${isSaved(c.ko, s.ko)}" aria-label="${esc(s.ko)} 보관함에 저장">♥</button>`}
+        <span class="badge">${tx('불러오는 중', 'Loading')}</span>
+        ${c.custom ? '' : `<button type="button" class="heart${isSaved(c.ko, s.ko) ? ' on' : ''}" aria-pressed="${isSaved(c.ko, s.ko)}" aria-label="${esc(tx(`${s.ko} 보관함에 저장`, `Save ${nm(s)}`))}">♥</button>`}
       </div>
-      <div class="meta">${s.g ? `<span class="tag">🚆 근교 · ${esc(s.g)}</span>` : ''}<h4>${esc(s.ko)}</h4>${s.d ? `<p>${esc(s.d)}</p>` : ''}
-        ${s.en && SPOT_META[s.en] ? (m => `<p class="info-line">🕐 ${esc(m.slot)} 추천 · ${m.stay}시간 · ${esc(m.fee)}${m.note ? ` · <b>${esc(m.note)}</b>` : ''}</p>`)(spotMeta(s)) : ''}
-        <div class="acts"><a class="pill" href="${ytLink(s.en || s.ko)}" target="_blank" rel="noopener">▶ 쇼츠</a>
-        ${s.en ? `<a class="pill" href="${mapLink(s.en, '')}" target="_blank" rel="noopener" title="Google 지도에서 위치와 오늘 운영시간 확인">📍 지도·운영시간</a>` : ''}</div></div>
+      <div class="meta">${s.g ? `<span class="tag">🚆 ${tx('근교', 'Day trip')} · ${esc(s.g)}</span>` : ''}<h4>${esc(nm(s))}</h4>${s.d ? `<p>${esc(s.d)}</p>` : ''}
+        ${s.en && SPOT_META[s.en] ? (m => `<p class="info-line">🕐 ${esc(tx(`${m.slot} 추천 · ${m.stay}시간`, `Best: ${m.slotName} · ${m.stay} h`))} · ${esc(m.fee)}${m.note ? ` · <b>${esc(m.note)}</b>` : ''}</p>`)(spotMeta(s)) : ''}
+        <div class="acts"><a class="pill" href="${ytLink(s.en || s.ko)}" target="_blank" rel="noopener">▶ ${tx('쇼츠', 'Shorts')}</a>
+        ${s.en ? `<a class="pill" href="${mapLink(s.en, '')}" target="_blank" rel="noopener" title="${tx('Google 지도에서 위치와 오늘 운영시간 확인', 'Location and today\'s opening hours on Google Maps')}">📍 ${tx('지도·운영시간', 'Map & hours')}</a>` : ''}</div></div>
     </article>`).join('');
   const cards = $$('.vcard', grid);
   cards.forEach((el, i) => { el._spot = spots[i]; el._idx = 0; });
@@ -842,7 +860,7 @@ $('#main').addEventListener('mouseover', e => { const card = e.target.closest('.
 
 function setBadge(el, html, cls = '') {
   const b = $('.badge', el); b.className = 'badge ' + cls; b.innerHTML = html;
-  if (cls.includes('cycle')) { b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0'); b.setAttribute('aria-label', '다른 영상 보기'); }
+  if (cls.includes('cycle')) { b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0'); b.setAttribute('aria-label', tx('다른 영상 보기', 'Show another video')); }
 }
 // 카드: 고정 대표 사진을 먼저 보여주고, 영상이 준비되면 그 위에 자연스럽게 겹쳐 재생
 const spotPhoto = s => s.en ? wikiImage(s.en).catch(() => null) : Promise.resolve(s.preset?.[0]?.poster || null);
@@ -850,7 +868,7 @@ function showPhoto(el, src) {
   if (!src || el._img === src) return;
   const media = $('.media', el);
   $('img.poster', media)?.remove();
-  const img = new Image(); img.className = 'poster'; img.alt = el._spot.ko; img.decoding = 'async'; img.src = src;
+  const img = new Image(); img.className = 'poster'; img.alt = nm(el._spot); img.decoding = 'async'; img.src = src;
   img.onload = () => $('.skeleton', media)?.remove();
   img.onerror = () => { img.remove(); el._img = null; if (el._state === 'photo') setPlaceholder(el); };
   media.prepend(img); el._img = src;
@@ -859,12 +877,12 @@ async function loadCard(el) {
   if (el._state === 'loading') return;
   const s = el._spot, photoP = withTimeout(spotPhoto(s), 8000).catch(() => null);
   if (!hasVideo(s)) {   // 고정 영상이 없으면 기다리지 않고 바로 사진
-    el._state = 'loading'; setBadge(el, '사진 불러오는 중', 'loading');
+    el._state = 'loading'; setBadge(el, tx('사진 불러오는 중', 'Loading photo'), 'loading');
     const img = await photoP;
     if (el.isConnected) img ? setPhoto(el, img) : setPlaceholder(el);
     return;
   }
-  el._state = 'loading'; setBadge(el, '영상 불러오는 중', 'loading');
+  el._state = 'loading'; setBadge(el, tx('영상 불러오는 중', 'Loading video'), 'loading');
   photoP.then(src => el.isConnected && showPhoto(el, src));
   try {
     el._vids = await withTimeout(spotVideos(s), 8000);
@@ -888,7 +906,7 @@ function setVideo(el, idx) {
   vid.setAttribute('muted', ''); vid.setAttribute('playsinline', ''); vid.setAttribute('aria-hidden', 'true');
   media.append(vid); el._v = vid;
   const n = el._vids.length;
-  setBadge(el, `영상 ${idx + 1}/${n} <span aria-hidden="true">⟳</span>`, 'cycle');   // 영상 수와 관계없이 같은 모양
+  setBadge(el, `${tx('영상', 'Video')} ${idx + 1}/${n} <span aria-hidden="true">⟳</span>`, 'cycle');   // 영상 수와 관계없이 같은 모양
   vid.addEventListener('playing', () => { vid.classList.add('on'); $('.skeleton', media)?.remove(); $('.badge', el).classList.add('live'); }, { once: true });
   vid.addEventListener('error', () => {   // 재생 실패 → 다음 후보 → 사진
     if (el._v !== vid) return;
@@ -900,25 +918,25 @@ function setVideo(el, idx) {
 }
 function cycle(el) {
   if (!el._vids?.length) return;
-  if (el._vids.length < 2) return toast(`'${el._spot.ko}' 영상은 1개예요 · ▶ 쇼츠에서 더 볼 수 있어요`);
+  if (el._vids.length < 2) return toast(tx(`'${el._spot.ko}' 영상은 1개예요 · ▶ 쇼츠에서 더 볼 수 있어요`, `Only one video for '${nm(el._spot)}' · more on ▶ Shorts`));
   setVideo(el, (el._idx + 1) % el._vids.length);
 }
 function setPhoto(el, src, failed) {
   el._state = failed ? 'error' : 'photo'; el._v = null; el.classList.add('is-photo');   // 사진은 천천히 확대(켄 번즈)
   $('video', $('.media', el))?.remove();
   showPhoto(el, src);
-  setBadge(el, failed ? '사진 · 영상 연결 실패' : '사진 · 영상은 쇼츠에서', 'photo');
-  if (failed && !$('.retry', el)) $('.media', el).insertAdjacentHTML('beforeend', '<button type="button" class="retry floating">영상 다시 시도</button>');
+  setBadge(el, failed ? tx('사진 · 영상 연결 실패', 'Photo · video failed') : tx('사진 · 영상은 쇼츠에서', 'Photo · videos on Shorts'), 'photo');
+  if (failed && !$('.retry', el)) $('.media', el).insertAdjacentHTML('beforeend', `<button type="button" class="retry floating">${tx('영상 다시 시도', 'Retry video')}</button>`);
 }
 function setPlaceholder(el) {
   el._state = 'none'; el._v = null; el._img = null; el.classList.remove('is-photo');
   $('.media', el).innerHTML = `<div class="placeholder" aria-hidden="true">🏞</div>`;
-  setBadge(el, '영상 준비 중 · 쇼츠에서 보기', 'photo');
+  setBadge(el, tx('영상 준비 중 · 쇼츠에서 보기', 'No video yet · see Shorts'), 'photo');
 }
 function setError(el) {
   el._state = 'error'; el.classList.remove('is-photo');
-  $('.media', el).innerHTML = `<div class="placeholder err"><span aria-hidden="true">⚠️</span><p>불러오지 못했어요</p><button type="button" class="retry">다시 시도</button></div>`;
-  setBadge(el, '연결 실패', 'photo');
+  $('.media', el).innerHTML = `<div class="placeholder err"><span aria-hidden="true">⚠️</span><p>${tx('불러오지 못했어요', 'Could not load')}</p><button type="button" class="retry">${tx('다시 시도', 'Retry')}</button></div>`;
+  setBadge(el, tx('연결 실패', 'Failed'), 'photo');
 }
 function stopVideos() { $$('.vcard video').forEach(v => v.pause()); }
 
@@ -943,17 +961,17 @@ async function showViewer(i) {
   const el = cards[vOrder[vIdx]], s = el._spot, vid = $('#vVid'), img = $('#vImg');
   clearTimeout(vTimer); $('#vBar').style.transition = 'none'; $('#vBar').style.width = '0';
   $('#vCount').textContent = `${vIdx + 1} / ${n}`;
-  $('#vTitle').textContent = s.ko; $('#vDesc').textContent = s.d || '';
+  $('#vTitle').textContent = nm(s); $('#vDesc').textContent = s.d || '';
   const vm = s.en && SPOT_META[s.en] ? spotMeta(s) : null;
-  $('#vMeta').textContent = vm ? `🕐 ${vm.slot} 추천 · 머무는 시간 약 ${vm.stay}시간 · ${vm.fee}${vm.note ? ' · ' + vm.note : ''}` : '';
+  $('#vMeta').textContent = vm ? `🕐 ${tx(`${vm.slot} 추천 · 머무는 시간 약 ${vm.stay}시간`, `Best: ${vm.slotName} · stay about ${vm.stay} h`)} · ${vm.fee}${vm.note ? ' · ' + vm.note : ''}` : '';
   $('#vYt').href = ytLink(s.en || s.ko);
   $('#vMap').hidden = true; $('#vMapBtn').setAttribute('aria-pressed', 'false');
   const saved = !current.custom && isSaved(current.ko, s.ko);
   $('#vHeart').hidden = !!current.custom;
-  $('#vHeart').textContent = saved ? '♥ 저장됨' : '♡ 저장'; $('#vHeart').setAttribute('aria-pressed', saved);
+  $('#vHeart').textContent = saved ? tx('♥ 저장됨', '♥ Saved') : tx('♡ 저장', '♡ Save'); $('#vHeart').setAttribute('aria-pressed', saved);
   $('#vMapBtn').hidden = !s.en;
   if (!el._state || el._state === 'loading') {
-    $('#vCredit').textContent = '불러오는 중…'; vid.pause(); vid.hidden = true; img.hidden = true;
+    $('#vCredit').textContent = tx('불러오는 중…', 'Loading…'); vid.pause(); vid.hidden = true; img.hidden = true;
     if (!el._state) loadCard(el);
     for (let t = 0; el._state === 'loading' && t < 90; t++) await sleep(200);   // 카드 로딩이 끝날 때까지 대기
     if (vCard() !== el || $('#viewer').hidden) return;
@@ -967,7 +985,7 @@ async function showViewer(i) {
     vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
   } else {
     vid.removeAttribute('src'); vid.load(); vid.hidden = true;
-    img.hidden = !el._img; img.src = el._img || ''; img.alt = s.ko;
+    img.hidden = !el._img; img.src = el._img || ''; img.alt = nm(s);
     if (el._img) { void img.offsetWidth; img.classList.add('kb'); }   // 사진은 천천히 확대(켄 번즈)
     if (file) {   // 카드용 작은 사진을 먼저 보여주고, 큰 화면용 고해상도 사진이 준비되면 교체
       const hd = new Image(); hd.src = photoUrl(file, 1280);
@@ -979,9 +997,9 @@ async function showViewer(i) {
 }
 // 출처 표시: 작성자 · 라이선스 · 원본(파일 설명 페이지) 링크
 function showCredit(el, v, file) {
-  const kind = v ? '영상' : '사진', f = v ? fileOf(v.page) : file;
+  const kind = v ? tx('영상', 'Video') : tx('사진', 'Photo'), f = v ? fileOf(v.page) : file;
   $('#vSrc').hidden = !f; $('#vSrc').href = v ? v.page : f ? 'https://commons.wikimedia.org/wiki/File:' + enc(f) : '';
-  $('#vCredit').textContent = v ? `영상 · ${v.title} · Wikimedia Commons` : el._img ? '사진 · Wikimedia Commons' : '이 명소는 아직 영상이 없어요 · 쇼츠에서 보기';
+  $('#vCredit').textContent = v ? `${tx('영상', 'Video')} · ${v.title} · Wikimedia Commons` : el._img ? tx('사진 · Wikimedia Commons', 'Photo · Wikimedia Commons') : tx('이 명소는 아직 영상이 없어요 · 쇼츠에서 보기', 'No video for this sight yet · see Shorts');
   if (!f) return;
   fileCredits([f]).then(cr => {
     const c = cr[f]; if (!c || vCard() !== el || $('#viewer').hidden) return;
@@ -1013,7 +1031,7 @@ $('#vPrev').addEventListener('click', () => showViewer(vIdx - 1));
 $('#vNext').addEventListener('click', () => showViewer(vIdx + 1));
 $('#vHeart').addEventListener('click', () => {
   const el = vCard(), on = toggleSaved(current.ko, el._spot.ko);
-  $('#vHeart').textContent = on ? '♥ 저장됨' : '♡ 저장'; $('#vHeart').setAttribute('aria-pressed', on);
+  $('#vHeart').textContent = on ? tx('♥ 저장됨', '♥ Saved') : tx('♡ 저장', '♡ Save'); $('#vHeart').setAttribute('aria-pressed', on);
   const h = $('.heart', el); h?.classList.toggle('on', on); renderPlan();
 });
 $('#vMapBtn').addEventListener('click', () => {
@@ -1077,19 +1095,19 @@ async function showFx() {
     const won = 1 / r, unit = fxUnit(won), p = fx.prev?.[cur.toLowerCase()];
     const chg = p ? ((1 / r) / (1 / p) - 1) * 100 : null;
     const d = parseD(fx.date);
-    el().innerHTML = `<span class="fi">💱</span><div><b>환율 · ${d.getMonth() + 1}/${d.getDate()} 기준</b>${unit.toLocaleString()} ${cur} = ${(won * unit).toLocaleString('ko-KR', { maximumFractionDigits: won * unit < 100 ? 2 : 0 })}원
-      ${chg == null ? '' : `<span class="chg ${chg > 0 ? 'up' : chg < 0 ? 'down' : ''}" title="전일 대비">${chg > 0 ? '▲' : chg < 0 ? '▼' : '–'} ${Math.abs(chg).toFixed(2)}%</span>`}</div>`;
+    el().innerHTML = `<span class="fi">💱</span><div><b>${tx('환율', 'Exchange rate')} · ${d.getMonth() + 1}/${d.getDate()}${tx(' 기준', '')}</b>${unit.toLocaleString()} ${cur} = ${tx('', '₩')}${(won * unit).toLocaleString(tx('ko-KR', 'en-US'), { maximumFractionDigits: won * unit < 100 ? 2 : 0 })}${tx('원', '')}
+      ${chg == null ? '' : `<span class="chg ${chg > 0 ? 'up' : chg < 0 ? 'down' : ''}" title="${tx('전일 대비', 'vs previous day')}">${chg > 0 ? '▲' : chg < 0 ? '▼' : '–'} ${Math.abs(chg).toFixed(2)}%</span>`}</div>`;
     c._fx = won;
     renderCalc();
   } catch { el()?.remove(); }
 }
 
 /* ---------- 날씨 (Open-Meteo, 키 없이 사용) ---------- */
-const WX = [[0, '☀️', '맑음'], [1, '🌤', '대체로 맑음'], [2, '⛅', '구름 조금'], [3, '☁️', '흐림'], [48, '🌫', '안개'], [57, '🌦', '이슬비'], [67, '🌧', '비'], [77, '🌨', '눈'], [82, '🌦', '소나기'], [86, '🌨', '눈 소나기'], [99, '⛈', '뇌우']];
+const WX = [[0, '☀️', tx('맑음', 'Clear')], [1, '🌤', tx('대체로 맑음', 'Mostly clear')], [2, '⛅', tx('구름 조금', 'Partly cloudy')], [3, '☁️', tx('흐림', 'Cloudy')], [48, '🌫', tx('안개', 'Fog')], [57, '🌦', tx('이슬비', 'Drizzle')], [67, '🌧', tx('비', 'Rain')], [77, '🌨', tx('눈', 'Snow')], [82, '🌦', tx('소나기', 'Showers')], [86, '🌨', tx('눈 소나기', 'Snow showers')], [99, '⛈', tx('뇌우', 'Thunderstorm')]];
 const wx = code => WX.find(([c]) => code <= c) || WX[3];
 // 여행 날짜가 2주 이내면 그 날짜의 실제 예보, 더 멀면 같은 달의 최근 3년 평균(기온·비 오는 날)
 const FORECAST_DAYS = 14;
-const geo = ap => cached('g:' + ap.en, async () => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(ap.en)}&count=1&language=ko`)).json()).results?.[0] || null);
+const geo = ap => cached('g:' + ap.en, async () => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(ap.en)}&count=1&language=${LANG}`)).json()).results?.[0] || null);
 // 목록에 없는 여행지의 좌표. 지명 검색은 한글을 못 찾거나 동명 지역(Palau → 이탈리아)을 고르므로
 // 영어 위키백과 문서의 좌표를 먼저 쓰고, 없을 때만 지명 검색
 const customGeo = q => cached('cg:' + q, async () => {
@@ -1111,8 +1129,8 @@ function climate(g) {
     return acc.map(a => a.n ? { hi: a.hi / a.n, lo: a.lo / a.n, rainDays: a.rain / 3, mm: a.mm / 3 } : null);
   });
 }
-const packTip = (hi, lo, rain) => [hi < 8 ? '🧥 두꺼운 패딩·장갑' : hi < 16 ? '🧥 코트나 두꺼운 겉옷' : hi < 23 ? '🧶 가벼운 겉옷' : '👕 반팔·자외선 차단',
-  lo < 3 && hi >= 8 ? '아침저녁 쌀쌀함' : '', rain >= 10 ? '☔ 우산 필수' : rain >= 5 ? '🌂 작은 우산' : ''].filter(Boolean).join(' · ');
+const packTip = (hi, lo, rain) => [hi < 8 ? tx('🧥 두꺼운 패딩·장갑', '🧥 Heavy coat and gloves') : hi < 16 ? tx('🧥 코트나 두꺼운 겉옷', '🧥 Coat or warm layer') : hi < 23 ? tx('🧶 가벼운 겉옷', '🧶 Light layer') : tx('👕 반팔·자외선 차단', '👕 Short sleeves and sunscreen'),
+  lo < 3 && hi >= 8 ? tx('아침저녁 쌀쌀함', 'chilly mornings and evenings') : '', rain >= 10 ? tx('☔ 우산 필수', '☔ Umbrella essential') : rain >= 5 ? tx('🌂 작은 우산', '🌂 Small umbrella') : ''].filter(Boolean).join(' · ');
 async function showWeather() {
   const c = current, ap = curAp, d1 = S.d1, d2 = S.trip === 'oneway' ? addDays(S.d1, 3) : S.d2;
   const el = () => current === c && curAp === ap && S.d1 === d1;
@@ -1127,29 +1145,29 @@ async function showWeather() {
     ]);
     if (!el()) return;
     const [, ic, label] = wx(now.current.weather_code);
-    if (fact()) fact().innerHTML = `<span class="fi">${ic}</span><div><b>지금 ${city} 날씨</b>${Math.round(now.current.temperature_2m)}° ${label}</div>`;
+    if (fact()) fact().innerHTML = `<span class="fi">${ic}</span><div><b>${tx(`지금 ${city} 날씨`, `${city} now`)}</b>${Math.round(now.current.temperature_2m)}° ${label}</div>`;
     if (!box()) return;
     if (fc?.daily) {
       const t = fc.daily.time.slice(0, 8);
-      box().innerHTML = `<h4>🌤 ${city} 여행 기간 예보</h4><div class="wx-days">${t.map((day, i) => {
+      box().innerHTML = `<h4>🌤 ${tx(`${city} 여행 기간 예보`, `${city} forecast for your dates`)}</h4><div class="wx-days">${t.map((day, i) => {
         const [, di, dl] = wx(fc.daily.weather_code[i]), dd = parseD(day), pr = fc.daily.precipitation_probability_max?.[i];
         return `<div class="wx-day"><small>${dd.getMonth() + 1}/${dd.getDate()}(${WD[dd.getDay()]})</small><span title="${dl}">${di}</span>
           <b>${Math.round(fc.daily.temperature_2m_max[i])}°</b><small>${Math.round(fc.daily.temperature_2m_min[i])}°${pr != null ? ` · ☔${pr}%` : ''}</small></div>`;
-      }).join('')}</div>${d2 > fc.daily.time.at(-1) ? '<p class="muted small">이후 날짜는 아직 예보가 없어요.</p>' : ''}`;
+      }).join('')}</div>${d2 > fc.daily.time.at(-1) ? `<p class="muted small">${tx('이후 날짜는 아직 예보가 없어요.', 'No forecast yet for later dates.')}</p>` : ''}`;
     } else {
       const cl = await climate(g); if (!el()) return;
       const months = [...new Set([parseD(d1).getMonth(), parseD(d2).getMonth()])];
-      box().innerHTML = `<h4>📊 ${city} 여행 시기 평균 날씨 <small class="muted">최근 3년</small></h4>${months.map(mi => { const s = cl[mi]; if (!s) return '';
-        return `<div class="clim"><b class="clim-m">${mi + 1}월</b>
-          <div class="clim-row"><span><small>평균 최고</small><b>${Math.round(s.hi)}°</b></span><span><small>평균 최저</small><b>${Math.round(s.lo)}°</b></span>
-          <span><small>비 오는 날</small><b>${Math.round(s.rainDays)}일</b></span><span><small>강수량</small><b>${Math.round(s.mm)}mm</b></span></div>
+      box().innerHTML = `<h4>📊 ${tx(`${city} 여행 시기 평균 날씨`, `${city} typical weather`)} <small class="muted">${tx('최근 3년', 'last 3 years')}</small></h4>${months.map(mi => { const s = cl[mi]; if (!s) return '';
+        return `<div class="clim"><b class="clim-m">${monthName(mi + 1)}</b>
+          <div class="clim-row"><span><small>${tx('평균 최고', 'Avg high')}</small><b>${Math.round(s.hi)}°</b></span><span><small>${tx('평균 최저', 'Avg low')}</small><b>${Math.round(s.lo)}°</b></span>
+          <span><small>${tx('비 오는 날', 'Rainy days')}</small><b>${Math.round(s.rainDays)}${tx('일', '')}</b></span><span><small>${tx('강수량', 'Rainfall')}</small><b>${Math.round(s.mm)}mm</b></span></div>
           <p class="muted small">${packTip(s.hi, s.lo, s.rainDays)}</p></div>`; }).join('')}
-        <p class="muted small">여행 ${FORECAST_DAYS}일 전부터는 실제 날짜 예보로 바뀌어요. (D-${away})</p>`;
+        <p class="muted small">${tx(`여행 ${FORECAST_DAYS}일 전부터는 실제 날짜 예보로 바뀌어요. (D-${away})`, `Switches to a daily forecast ${FORECAST_DAYS} days before your trip. (${away} days to go)`)}</p>`;
     }
   } catch {
     if (!el()) return;
     fact()?.remove();
-    if (box()) box().innerHTML = `<h4>🌤 날씨</h4><p class="muted">날씨 정보를 불러오지 못했어요.</p>`;
+    if (box()) box().innerHTML = `<h4>🌤 ${tx('날씨', 'Weather')}</h4><p class="muted">${tx('날씨 정보를 불러오지 못했어요.', 'Could not load the weather.')}</p>`;
   }
 }
 
@@ -1158,47 +1176,53 @@ function renderInfo() {
   const c = current, I = c.info, box = $('#sec-info'); if (!box) return;
   const tripM = parseD(S.d1).getMonth() + 1;
   box.innerHTML = `
-    <div class="block-title"><h3>📋 여행 정보</h3><small>${esc(cityOf(curAp))} 기준</small></div>
+    <div class="block-title"><h3>📋 ${tx('여행 정보', 'Travel info')}</h3><small>${esc(tx(`${cityOf(curAp)} 기준`, `for ${cityOf(curAp)}`))}</small></div>
     <div class="info-grid">
-      <div class="panel" id="wxBox"><h4>🌤 날씨</h4><div class="skeleton-line"></div></div>
-      ${I.best ? `<div class="panel"><h4>📅 추천 시기 · ${esc(I.season)}</h4>
+      <div class="panel" id="wxBox"><h4>🌤 ${tx('날씨', 'Weather')}</h4><div class="skeleton-line"></div></div>
+      ${I.best ? `<div class="panel"><h4>📅 ${tx('추천 시기', 'Best time')} · ${esc(I.season)}</h4>
         <div class="months">${Array.from({ length: 12 }, (_, i) => i + 1).map(k =>
-          `<span class="mo${I.best.includes(k) ? ' best' : ''}${k === tripM ? ' trip' : ''}" title="${k}월${I.best.includes(k) ? ' 추천' : ''}">${k}</span>`).join('')}</div>
-        <p class="muted small">${I.best.includes(tripM) ? `✅ 여행 날짜(${tripM}월)는 추천 시기예요` : `ℹ️ 여행 날짜(${tripM}월)는 추천 시기가 아니에요`}</p></div>` : ''}
-      ${c.cur ? `<div class="panel" id="calcBox"><h4>💱 환율 계산기</h4><p class="muted">환율 불러오는 중…</p></div>` : ''}
-      ${I.budget ? `<div class="panel" id="budgetBox"><h4>💰 1일 예상 경비 <small class="muted">1인 · 숙박 포함</small></h4>
-        <div class="budget" role="group" aria-label="경비 수준 선택">${TIERS.map((l, i) => `<button type="button" class="tier" data-tier="${i}"><small>${l}</small><b>${I.budget[i]}만원</b></button>`).join('')}</div>
-        <label class="own"><b>✏️ 직접 입력</b><span>1인 하루 <input type="number" id="budgetAmt" inputmode="decimal" enterkeyhint="done" min="1" max="${OWN_MAX}" step="any" placeholder="금액" aria-label="1인 하루 희망 경비 (만원)"> 만원</span></label>
+          `<span class="mo${I.best.includes(k) ? ' best' : ''}${k === tripM ? ' trip' : ''}" title="${monthName(k)}${I.best.includes(k) ? tx(' 추천', ' · recommended') : ''}">${k}</span>`).join('')}</div>
+        <p class="muted small">${I.best.includes(tripM) ? tx(`✅ 여행 날짜(${tripM}월)는 추천 시기예요`, `✅ Your travel month (${MON[tripM - 1]}) is a recommended time`) : tx(`ℹ️ 여행 날짜(${tripM}월)는 추천 시기가 아니에요`, `ℹ️ Your travel month (${MON[tripM - 1]}) is outside the best season`)}</p></div>` : ''}
+      ${c.cur ? `<div class="panel" id="calcBox"><h4>💱 ${tx('환율 계산기', 'Currency converter')}</h4><p class="muted">${tx('환율 불러오는 중…', 'Loading rates…')}</p></div>` : ''}
+      ${I.budget ? `<div class="panel" id="budgetBox"><h4>💰 ${tx('1일 예상 경비', 'Daily budget')} <small class="muted">${tx('1인 · 숙박 포함', 'per person, incl. lodging')}</small></h4>
+        <div class="budget" role="group" aria-label="${tx('경비 수준 선택', 'Choose a spending level')}">${TIERS.map((l, i) => `<button type="button" class="tier" data-tier="${i}"><small>${l}</small><b>${money(I.budget[i])}</b></button>`).join('')}</div>
+        <label class="own"><b>✏️ ${tx('직접 입력', 'Your amount')}</b><span>${tx('1인 하루', '₩ per day')} <input type="number" id="budgetAmt" inputmode="decimal" enterkeyhint="done" min="1" max="${OWN_MAX * AMT_UNIT}" step="any" placeholder="${tx('금액', 'Amount')}" aria-label="${tx('1인 하루 희망 경비 (만원)', 'Your daily budget per person in won')}"> ${tx('만원', '')}</span></label>
         <div class="budget-sum" aria-live="polite"></div></div>` : ''}
-      ${I.tips ? `<div class="panel"><h4>💡 현지 꿀팁</h4><ul class="tips">${I.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
-        <a class="link" href="https://www.0404.go.kr/" target="_blank" rel="noopener">🛡 외교부 해외안전여행에서 여행경보 확인 →</a></div>` : ''}
+      ${I.tips ? `<div class="panel"><h4>💡 ${tx('현지 꿀팁', 'Local tips')}</h4><ul class="tips">${I.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+        ${EN ? '' : '<a class="link" href="https://www.0404.go.kr/" target="_blank" rel="noopener">🛡 외교부 해외안전여행에서 여행경보 확인 →</a>'}</div>` : ''}
     </div>`;
   renderCalc(); renderBudget();
   // 제목 옆 배지도 '선택한 여행 날짜' 기준 (오늘 기준과 섞이지 않게)
   const badge = $('#seasonBadge');
-  if (badge) badge.innerHTML = I.best?.includes(tripM) ? `<span class="now-good">${tripM}월 여행 추천 시기</span>` : '';
+  if (badge) badge.innerHTML = I.best?.includes(tripM) ? `<span class="now-good">${tx(`${tripM}월 여행 추천 시기`, `Great in ${MON[tripM - 1]}`)}</span>` : '';
   if (current === c) showWeather();
 }
 
 /* ---------- 예상 경비: 알뜰·보통·여유를 고르거나 희망 금액을 직접 넣으면 총액을 다시 계산 (선택은 기억) ---------- */
-const TIERS = ['알뜰', '보통', '여유'];
+const TIERS = tx(['알뜰', '보통', '여유'], ['Budget', 'Mid-range', 'Comfort']);
+// 금액은 만원 단위로 저장. 영어판은 원 단위로 보여주고 입력받음
+const AMT_UNIT = tx(1, 10000);
+const money = v => tx(`${man(v)}만원`, '₩' + Math.round(v * 10000).toLocaleString('en-US'));
 const OWN_MAX = 10000;   // 직접 입력할 수 있는 1인 하루 최대 금액(만원)
 let budgetTier = TIERS[store.get('tier', 1)] ? store.get('tier', 1) : 1;
 let budgetAmt = +store.get('budgetAmt', 0) || 0;   // 직접 입력한 1인 하루 금액(만원), 0이면 없음
 let budgetOwn = !!store.get('budgetOwn', false);   // true면 직접 입력한 금액으로 계산
-const man = n => n.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+const man = n => n.toLocaleString('ko-KR', { maximumFractionDigits: 1 });   // 만원 단위 숫자
 function renderBudget() {
   const box = $('#budgetBox'), b = current?.info.budget; if (!box || !b) return;
   const own = budgetOwn && budgetAmt > 0, per = own ? budgetAmt : b[budgetTier];
-  const days = Math.max(1, nights() || 4), unit = nights() ? '박' : '일', ppl = S.adults + S.children;
+  const days = Math.max(1, nights() || 4), ppl = S.adults + S.children;
+  const daysText = nights() ? nightsText(days) : tx(`${days}일`, plural(days, 'day'));
   $$('.tier', box).forEach(btn => { const on = !own && +btn.dataset.tier === budgetTier; btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on); });
   $('.own', box).classList.toggle('on', own);
-  const input = $('#budgetAmt'); if (document.activeElement !== input) input.value = budgetAmt || '';   // 입력 중에는 건드리지 않음
+  const input = $('#budgetAmt'); if (document.activeElement !== input) input.value = budgetAmt ? Math.round(budgetAmt * AMT_UNIT * 100) / 100 : '';   // 입력 중에는 건드리지 않음
   // 직접 입력한 금액이 이 여행지에서 어느 수준인지 알려줌
-  const level = per < b[0] ? `알뜰(${b[0]}만원)보다 적어 빠듯할 수 있어요` : `이 여행지의 '${TIERS[per >= b[2] ? 2 : per >= b[1] ? 1 : 0]}' 수준이에요`;
-  $('.budget-sum', box).innerHTML = `<small>${own ? '직접 입력한 금액' : TIERS[budgetTier]} 기준 총 예상 경비</small><b>약 ${man(per * days * ppl)}만원</b>
-    <small>${man(per)}만원 × ${days}${unit} × ${ppl}명${ppl > 1 ? ` (1인 ${man(per * days)}만원)` : ''}</small>
-    <small>항공권${S.infants ? '·유아' : ''} 제외, 대략치</small>${own ? `<small class="level">${level}</small>` : ''}`;
+  const tierName = TIERS[per >= b[2] ? 2 : per >= b[1] ? 1 : 0];
+  const level = per < b[0] ? tx(`알뜰(${money(b[0])})보다 적어 빠듯할 수 있어요`, `Below the budget level (${money(b[0])}), so it may be tight`) : tx(`이 여행지의 '${tierName}' 수준이에요`, `That is a '${tierName}' budget here`);
+  const basis = own ? tx('직접 입력한 금액', 'your amount') : TIERS[budgetTier];
+  $('.budget-sum', box).innerHTML = `<small>${tx(`${basis} 기준 총 예상 경비`, `Estimated total (${basis})`)}</small><b>${tx('약', 'About')} ${money(per * days * ppl)}</b>
+    <small>${money(per)} × ${daysText} × ${tx(`${ppl}명`, plural(ppl, 'person', 'people'))}${ppl > 1 ? ` (${tx(`1인 ${money(per * days)}`, `${money(per * days)} each`)})` : ''}</small>
+    <small>${tx(`항공권${S.infants ? '·유아' : ''} 제외, 대략치`, `Rough figure, excluding flights${S.infants ? ' and infants' : ''}`)}</small>${own ? `<small class="level">${level}</small>` : ''}`;
 }
 function setBudget(own) {
   budgetOwn = own;
@@ -1211,9 +1235,9 @@ $('#main').addEventListener('click', e => {
 });
 $('#main').addEventListener('input', e => {
   if (e.target.id !== 'budgetAmt') return;
-  const v = parseFloat(e.target.value);
+  const v = parseFloat(e.target.value) / AMT_UNIT;
   budgetAmt = v > 0 ? Math.min(v, OWN_MAX) : 0;
-  if (v > OWN_MAX) e.target.value = OWN_MAX;
+  if (v > OWN_MAX) e.target.value = OWN_MAX * AMT_UNIT;
   setBudget(budgetAmt > 0);   // 비우면 고르던 알뜰·보통·여유 기준으로 돌아감
 });
 // 넣어 둔 금액이 있으면 입력칸을 누르는 것만으로 그 금액 기준으로 전환
@@ -1221,11 +1245,11 @@ $('#main').addEventListener('focusin', e => { if (e.target.id === 'budgetAmt' &&
 function renderCalc() {
   const c = current, box = $('#calcBox'); if (!box || !c?._fx) return;
   const unit = fxUnit(c._fx);
-  box.innerHTML = `<h4>💱 환율 계산기</h4>
+  box.innerHTML = `<h4>💱 ${tx('환율 계산기', 'Currency converter')}</h4>
     <div class="calc">
-      <label><span>${c.cur}</span><input type="number" inputmode="decimal" id="fxLocal" value="${unit}" min="0" aria-label="${c.cur} 금액"></label>
+      <label><span>${c.cur}</span><input type="number" inputmode="decimal" id="fxLocal" value="${unit}" min="0" aria-label="${tx(`${c.cur} 금액`, `Amount in ${c.cur}`)}"></label>
       <span class="eq" aria-hidden="true">⇄</span>
-      <label><span>KRW</span><input type="number" inputmode="decimal" id="fxKrw" value="${Math.round(c._fx * unit)}" min="0" aria-label="원화 금액"></label>
+      <label><span>KRW</span><input type="number" inputmode="decimal" id="fxKrw" value="${Math.round(c._fx * unit)}" min="0" aria-label="${tx('원화 금액', 'Amount in won')}"></label>
     </div>
     <div class="chips calc-quick">${[1, 10, 100, 1000].map(n => n * unit)
       .map(n =>`<button type="button" class="chip sm" data-amt="${n}">${n.toLocaleString()} ${c.cur}</button>`).join('')}</div>`;
@@ -1301,14 +1325,14 @@ $('#main').addEventListener('click', e => {
     planEditing = planEditing === curAp.code ? null : curAp.code; renderPlan();
     $('#planBody [data-act="toggle"]')?.focus({ preventScroll: true });
   } else if (act === 'reset') {   // 실수로 지우지 않도록 두 번 눌러야 초기화
-    if (b.dataset.sure) { savePlan(null); toast('추천 일정으로 되돌렸어요'); }
-    else { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 편집한 내용이 지워져요'; }
+    if (b.dataset.sure) { savePlan(null); toast(tx('추천 일정으로 되돌렸어요', 'Back to the suggested plan')); }
+    else { b.dataset.sure = '1'; b.textContent = tx('한 번 더 누르면 편집한 내용이 지워져요', 'Click again to discard your edits'); }
   } else if (act === 'trip-open' || act === 'trip-move') {
     const t = getTrips().find(x => x.id === b.dataset.id); if (!t) return;
     if (act === 'trip-open') { applyTripDates(t); renderTravel(); renderInfo(); }
-    else { updateTrip(t.id, { trip: S.trip, d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2 }); toast('여행 날짜를 바꿨어요 · 편집한 일정과 체크리스트는 그대로예요'); }
+    else { updateTrip(t.id, { trip: S.trip, d1: S.d1, d2: S.trip === 'oneway' ? S.d1 : S.d2 }); toast(tx('여행 날짜를 바꿨어요 · 편집한 일정과 체크리스트는 그대로예요', 'Trip dates changed · your plan and checklist are kept')); }
     renderPlan();
-  } else if (act === 'share')shareLink(planURL(), `${current.ko} 여행 일정 · 트립릴스`, `${cityOf(curAp)} 여행 일정을 확인해 보세요`, '일정 링크를 복사했어요');
+  } else if (act === 'share') shareLink(planURL(), tx(`${current.ko} 여행 일정 · 떠날지도`, `${current.name} itinerary · Maybe Go`), tx(`${cityOf(curAp)} 여행 일정을 확인해 보세요`, `Take a look at this ${cityOf(curAp)} itinerary`), tx('일정 링크를 복사했어요', 'Itinerary link copied'));
   else if (act === 'keep') keepShared(b);
   else if (act === 'close') closeShared();
   else editPlan(act, b.dataset.spot);
@@ -1331,7 +1355,7 @@ function planURL() {
     f: `${ft.arr}-${ft.dep}`.replace(/:/g, ''),
     p: planLists.map(l => l.map(spotId).join('.')).join('-')
   });
-  return `${SITE}${current.info.slug ? current.info.slug + '/' : '?d=' + current.slug}#${q}`;
+  return `${sharePage()}#${q}`;
 }
 // 받은 링크 읽기. 누구나 고칠 수 있는 값이라 형식을 확인하고, 아는 명소만 받음
 function readShare(d, apCode, q) {
@@ -1368,11 +1392,11 @@ function closeShared() { endShared(); setURL(false); renderTravel(); renderInfo(
 function keepShared(btn) {
   const sh = sharedHere(); if (!sh) return;
   const mine = tripAt(sh.code);
-  if (mine && store.get('plans', {})[mine.id] && !btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = '한 번 더 누르면 기존 내 일정을 덮어써요'; return; }
+  if (mine && store.get('plans', {})[mine.id] && !btn.dataset.sure) { btn.dataset.sure = '1'; btn.textContent = tx('한 번 더 누르면 기존 내 일정을 덮어써요', 'Click again to overwrite your plan'); return; }
   const t = mine || addTrip();
   store.set('plans', { ...store.get('plans', {}), [t.id]: sh.lists });
   store.set('flights', { ...store.get('flights', {}), [t.id]: sh.flights });
-  sharedPlan = null; saveS(); setURL(false); renderPlan(); toast('내 여행으로 저장했어요 · 첫 화면에서 볼 수 있어요');
+  sharedPlan = null; saveS(); setURL(false); renderPlan(); toast(tx('내 여행으로 저장했어요 · 첫 화면에서 볼 수 있어요', 'Saved to your trips · see it on the home page'));
 }
 
 function renderPlan() {
@@ -1446,7 +1470,8 @@ function renderPlan() {
     plan.forEach(p => { p.list = bySlot(p.list); });   // 추천 일정은 추천 시간대 순서로
   }
   const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n || city;
-  const dayLabel = i => { if (S.trip === 'oneway') return `${i + 1}일차`; const d = parseD(addDays(S.d1, i)); return `${i + 1}일차 · ${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
+  const dayNo = i => tx(`${i + 1}일차`, `Day ${i + 1}`);
+  const dayLabel = i => { if (S.trip === 'oneway') return dayNo(i); const d = parseD(addDays(S.d1, i)); return `${dayNo(i)} · ${tx(`${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`, `${WD[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`)}`; };
   const route = list => 'https://www.google.com/maps/dir/' + list.map(s => enc(s.en)).join('/');
   const leave = i => hasReturn && i === days - 1;
 
@@ -1458,14 +1483,14 @@ function renderPlan() {
     const rows = [], first = i === 0, isLast = leave(i), limit = endBy(i), kept = [];
     // 첫날은 도착 후 입국 심사·숙소 이동을 마친 시각부터 (이른 도착이면 9시부터)
     let t = first ? firstStart : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first && firstStart > 13.5 * 60, dinner = false;
-    const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? '🍜 점심' : '🍽 저녁'}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
-    if (first) rows.push({ kind: 'note', time: arrive, exact: true, text: `✈ ${curAp.name} 도착 · 입국 심사 후 ${area} ${arrive < 13 * 60 ? '숙소에 짐 맡기기' : '숙소 체크인'}${arrive + ARRIVE_LEAD >= 21 * 60 ? ' · 늦은 도착이라 첫날은 쉬어 가요' : ''}` });
-    const tripNote = p.g ? { kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` } : null;
+    const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? tx('🍜 점심', '🍜 Lunch') : tx('🍽 저녁', '🍽 Dinner')}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
+    if (first) rows.push({ kind: 'note', time: arrive, exact: true, text: tx(`✈ ${curAp.name} 도착 · 입국 심사 후 ${area} ${arrive < 13 * 60 ? '숙소에 짐 맡기기' : '숙소 체크인'}`, `✈ Arrive at ${curAp.name} · after immigration, ${arrive < 13 * 60 ? 'drop your bags' : 'check in'} at your ${area} stay`) + (arrive + ARRIVE_LEAD >= 21 * 60 ? tx(' · 늦은 도착이라 첫날은 쉬어 가요', ' · late arrival, so rest on day one') : '') });
+    const tripNote = p.g ? { kind: 'note', time: t, text: tx(`🚆 근교 당일치기 · ${p.g}(으)로 출발`, `🚆 Day trip · leave for ${p.g}`) } : null;
     if (tripNote) rows.push(tripNote);
     p.list.forEach((s, k) => {
       const before = { n: rows.length, t, lunch, dinner, foodIdx };
       const m = spotMeta(s), mv = travel(prev, spotGeo(s)), mvMin = mv?.min || 0;
-      const free = () => rows.push({ kind: 'free', time: t, text: '☕ 자유 시간 · 쇼핑, 카페, 숙소 휴식' });
+      const free = () => rows.push({ kind: 'free', time: t, text: tx('☕ 자유 시간 · 쇼핑, 카페, 숙소 휴식', '☕ Free time · shopping, cafés, a rest') });
       if (!lunch && t >= 11 * 60 && t <= 14.5 * 60) meal('lunch');
       const want = SLOT_START[m.slot];
       // 저녁·야간 명소는 그 시간에 맞춰 출발: 남는 시간엔 점심·자유 시간·저녁을 먼저 넣고, 이동은 그 뒤에
@@ -1487,7 +1512,7 @@ function renderPlan() {
       // 추천 일정: 공항에 가야 하는 시각을 넘기면 넣기 전 상태로 되돌리고 '더 둘러볼 곳'으로 보냄
       if (late && !custom) { rows.length = before.n; ({ t, lunch, dinner, foodIdx } = before); return; }
       // 직접 넣은 명소는 빼지 않고 알려 줌
-      row.warn = late ? '공항에 가야 하는 시각을 넘겨요' : t > 23 * 60 ? '밤 11시 이후에 끝나요' : '';
+      row.warn = late ? tx('공항에 가야 하는 시각을 넘겨요', 'Runs past the time to leave for the airport') : t > 23 * 60 ? tx('밤 11시 이후에 끝나요', 'Ends after 11 pm') : '';
       prev = spotGeo(s) || prev; kept.push(s);
     });
     if (tripNote && !kept.length) rows.splice(rows.indexOf(tripNote), 1);   // 근교 명소를 하나도 못 넣었으면 출발 안내도 뺌
@@ -1496,86 +1521,86 @@ function renderPlan() {
     if (!lunch && t <= 14.5 * 60 && Math.max(t, 12 * 60) + 60 <= limit) { t = Math.max(t, 12 * 60); meal('lunch'); }
     if (!isLast && !p.g && kept.length && t < 16 * 60) {   // 근교 날은 그 도시 맛집 거리를 추천하지 않음
       const st = streets.length ? streets[i % streets.length] : null;
-      rows.push({ kind: 'free', time: t, text: st ? `☕ 자유 시간 · ${st.n} 구경 (${st.d})` : '☕ 자유 시간 · 쇼핑, 카페, 산책' });
+      rows.push({ kind: 'free', time: t, text: st ? tx(`☕ 자유 시간 · ${st.n} 구경 (${st.d})`, `☕ Free time · explore ${st.n} (${st.d})`) : tx('☕ 자유 시간 · 쇼핑, 카페, 산책', '☕ Free time · shopping, cafés, a stroll') });
       t = 17 * 60;
     }
-    if (kept.at(-1)?.g) { const back = travel(prev, center); if (back) { rows.push({ kind: 'move', text: back.text.replace(/^(\S+)/, '$1 숙소로') }); t += back.min; } }
-    if (isLast && outAt - t >= 90) rows.push({ kind: 'free', time: t, text: t < 12 * 60 ? '🧳 체크아웃 후 짐을 맡기고 근처 산책·쇼핑' : '☕ 공항 가기 전까지 근처 산책·쇼핑' });
+    if (kept.at(-1)?.g) { const back = travel(prev, center); if (back) { rows.push({ kind: 'move', text: tx(back.text.replace(/^(\S+)/, '$1 숙소로'), back.text + ' back to your stay') }); t += back.min; } }
+    if (isLast && outAt - t >= 90) rows.push({ kind: 'free', time: t, text: t < 12 * 60 ? tx('🧳 체크아웃 후 짐을 맡기고 근처 산책·쇼핑', '🧳 Check out, leave your bags, stroll and shop nearby') : tx('☕ 공항 가기 전까지 근처 산책·쇼핑', '☕ Stroll and shop nearby until the airport') });
     if (!dinner && t <= 22 * 60 && Math.max(t, 18.5 * 60) + 75 <= limit) { t = Math.max(t, 18.5 * 60); meal('dinner'); }
-    if (!kept.length && !isLast && (first ? firstStart < 17 * 60 : limit === Infinity)) rows.splice(first ? 1 : 0, 0, { kind: 'free', time: first ? firstStart : 10 * 60, text: '☕ 자유 일정 · 쇼핑, 맛집, 휴식' });
-    if (hasReturn && outAt < 0 && i === days - 2) rows.push({ kind: 'note', time: outAt + 1440, exact: true, text: `✈ ${curAp.name}(으)로 이동 · 내일 새벽 ${ft.dep} 출국` });
-    if (isLast) rows.push(outAt < 0 ? { kind: 'note', time: depart, exact: true, text: `✈ ${curAp.name} 출국 · 전날 밤에 공항으로 이동` }
-      : { kind: 'note', time: outAt, exact: true, text: `✈ ${curAp.name}(으)로 이동 · ${ft.dep} 출국` });
+    if (!kept.length && !isLast && (first ? firstStart < 17 * 60 : limit === Infinity)) rows.splice(first ? 1 : 0, 0, { kind: 'free', time: first ? firstStart : 10 * 60, text: tx('☕ 자유 일정 · 쇼핑, 맛집, 휴식', '☕ Open day · shopping, food, rest') });
+    if (hasReturn && outAt < 0 && i === days - 2) rows.push({ kind: 'note', time: outAt + 1440, exact: true, text: tx(`✈ ${curAp.name}(으)로 이동 · 내일 새벽 ${ft.dep} 출국`, `✈ Head to ${curAp.name} · flight at ${ft.dep} after midnight`) });
+    if (isLast) rows.push(outAt < 0 ? { kind: 'note', time: depart, exact: true, text: tx(`✈ ${curAp.name} 출국 · 전날 밤에 공항으로 이동`, `✈ Depart from ${curAp.name} · go to the airport the night before`) }
+      : { kind: 'note', time: outAt, exact: true, text: tx(`✈ ${curAp.name}(으)로 이동 · ${ft.dep} 출국`, `✈ Head to ${curAp.name} · flight at ${ft.dep}`) });
     return { g: kept.length ? p.g : '', list: kept, rows };
   });
   const placed = timeline.flatMap(p => p.list), unplaced = spots.filter(s => !placed.includes(s));
   planLists = timeline.map(p => p.list.map(s => s.ko));
-  const spotName = s => s.ko + (s.g ? '(근교)' : '');
+  const spotName = s => nm(s) + (s.g ? tx('(근교)', ' (day trip)') : '');
   // 편집 모드에서 명소마다 붙는 순서·날짜·빼기 버튼
   const tools = (s, i, j) => {
     const id = `data-spot="${esc(s.ko)}"`;
     return `<div class="tl-edit">
-      <button type="button" data-act="up" ${id} aria-label="${esc(s.ko)} 앞으로" ${i === 0 && j === 0 ? 'disabled' : ''}>▲</button>
-      <button type="button" data-act="down" ${id} aria-label="${esc(s.ko)} 뒤로" ${i === days - 1 && j === timeline[i].list.length - 1 ? 'disabled' : ''}>▼</button>
-      <select data-act="day" ${id} aria-label="${esc(s.ko)} 날짜 옮기기">${timeline.map((_, k) => `<option value="${k}" ${k === i ? 'selected' : ''}>${k + 1}일차</option>`).join('')}</select>
-      <button type="button" data-act="remove" ${id} aria-label="${esc(s.ko)} 일정에서 빼기">빼기</button></div>`;
+      <button type="button" data-act="up" ${id} aria-label="${esc(tx(`${s.ko} 앞으로`, `Move ${nm(s)} earlier`))}" ${i === 0 && j === 0 ? 'disabled' : ''}>▲</button>
+      <button type="button" data-act="down" ${id} aria-label="${esc(tx(`${s.ko} 뒤로`, `Move ${nm(s)} later`))}" ${i === days - 1 && j === timeline[i].list.length - 1 ? 'disabled' : ''}>▼</button>
+      <select data-act="day" ${id} aria-label="${esc(tx(`${s.ko} 날짜 옮기기`, `Move ${nm(s)} to another day`))}">${timeline.map((_, k) => `<option value="${k}" ${k === i ? 'selected' : ''}>${dayNo(k)}</option>`).join('')}</select>
+      <button type="button" data-act="remove" ${id} aria-label="${esc(tx(`${s.ko} 일정에서 빼기`, `Remove ${nm(s)} from the plan`))}">${tx('빼기', 'Remove')}</button></div>`;
   };
   const hm = clock, rowTime = r => r.time == null ? '' : r.exact ? exactTime(r.time) : hm(r.time);
   const nearMap = s => mapLink('restaurants near ' + (s?.en || curAp.en));
-  const text = timeline.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}]\n` + p.rows.filter(r => r.kind !== 'move').map(r =>
-    `${r.time != null ? rowTime(r) + ' ' : ''}${r.spot ? r.spot.ko : r.text}`).join('\n')).join('\n\n');
+  const text = timeline.map((p, i) => `[${dayLabel(i)}${p.g ? tx(' · 근교 ', ' · Day trip: ') + p.g : ''}]\n` + p.rows.filter(r => r.kind !== 'move').map(r =>
+    `${r.time != null ? rowTime(r) + ' ' : ''}${r.spot ? nm(r.spot) : r.text}`).join('\n')).join('\n\n');
   // 시각 입력칸은 처음 한 번만 만듦 (입력하는 동안 다시 그리면 커서가 사라지므로 제목과 본문만 갱신)
   if (!$('#planBody', box)) box.innerHTML = `<div class="block-title" id="planHead"></div>
     <div class="flight-times">
-      <label><span>✈ 현지 도착</span><input type="time" data-flight="arr" required></label>
-      <label id="depField"><span>🛫 귀국편 출발</span><input type="time" data-flight="dep" required></label>
-      <p>항공권에 적힌 현지 시각을 넣으면 일정이 맞춰져요. 도착일은 '가는 날', 출발일은 '오는 날' 기준이에요. 도착 2시간 뒤부터 움직이고, 출발 3시간 전에 공항으로 가는 것으로 계산해요.</p>
+      <label><span>✈ ${tx('현지 도착', 'Arrival (local)')}</span><input type="time" data-flight="arr" required></label>
+      <label id="depField"><span>🛫 ${tx('귀국편 출발', 'Return flight')}</span><input type="time" data-flight="dep" required></label>
+      <p>${tx("항공권에 적힌 현지 시각을 넣으면 일정이 맞춰져요. 도착일은 '가는 날', 출발일은 '오는 날' 기준이에요. 도착 2시간 뒤부터 움직이고, 출발 3시간 전에 공항으로 가는 것으로 계산해요.", 'Enter the local times on your ticket and the plan adjusts. You arrive on the departure date and fly home on the return date. The plan starts 2 hours after landing and leaves for the airport 3 hours before departure.')}</p>
     </div>
     <div id="planBody"></div>`;
   $$('[data-flight]', box).forEach(el => { if (el !== document.activeElement) el.value = ft[el.dataset.flight]; });
   $('#depField', box).hidden = !hasReturn;
-  const kind = sv ? '공유받은 일정' : custom ? '내 일정' : '추천 일정';
+  const kind = sv ? tx('공유받은 일정', 'Shared plan') : custom ? tx('내 일정', 'My plan') : tx('추천 일정', 'Suggested plan');
   // 이 공항에 저장한 여행이 있는데 지금 날짜가 다르면, 그 일정을 보거나 날짜를 옮길 수 있게 안내
   const mine = tripAt(curAp.code);
   const otherTrips = sv || mine ? [] : getTrips().filter(t => t.ap === curAp.code && tripEnd(t) >= today()).sort((a, b) => a.d1.localeCompare(b.d1));
   updateTripButton();
-  $('#planHead', box).innerHTML = `<h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? `${kind} (예시 4일)` : `${nights()}박 ${days}일 ${kind}`}</h3>
-      <small>${mine && !sv ? '📌 저장한 여행 · ' : ''}${sv ? '링크로 받은 일정이에요' :custom ? '직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요' :useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small>`;
+  $('#planHead', box).innerHTML = `<h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? tx(`${kind} (예시 4일)`, `· ${kind} (4-day sample)`) : tx(`${nights()}박 ${days}일 ${kind}`, `· ${days}-day ${kind.toLowerCase()}`)}</h3>
+      <small>${mine && !sv ? tx('📌 저장한 여행 · ', '📌 Saved trip · ') : ''}${sv ? tx('링크로 받은 일정이에요', 'Received by link') :custom ? tx('직접 편집한 일정이에요 · ♥를 눌러도 순서는 바뀌지 않아요', 'Edited by you · ♥ no longer reorders it') :useSaved ? tx(`♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요`, `Your ${plural(picked.length, 'saved place')} first, then suggestions`) : tx(`${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`, `Top sights in ${esc(city)} · tap ♥ on a card to prioritise it`)}</small>`;
   $('#planBody', box).innerHTML = `
-    ${otherTrips.length ? `<div class="plan-trips"><p>📌 ${esc(city)}에 저장한 여행이 있어요. 지금 날짜에는 그 여행의 일정이 적용되지 않아요.</p>${otherTrips.map(t => `
-      <div><b>${tripDates(t)}</b><button type="button" class="btn" data-act="trip-open" data-id="${esc(t.id)}">이 여행 일정 보기</button>
-        <button type="button" class="btn ghost" data-act="trip-move" data-id="${esc(t.id)}">여행 날짜를 지금 날짜로 바꾸기</button></div>`).join('')}</div>` : ''}
+    ${otherTrips.length ? `<div class="plan-trips"><p>📌 ${tx(`${esc(city)}에 저장한 여행이 있어요. 지금 날짜에는 그 여행의 일정이 적용되지 않아요.`, `You have a saved trip to ${esc(city)}. Its plan does not apply to these dates.`)}</p>${otherTrips.map(t => `
+      <div><b>${tripDates(t)}</b><button type="button" class="btn" data-act="trip-open" data-id="${esc(t.id)}">${tx('이 여행 일정 보기', 'Open that trip')}</button>
+        <button type="button" class="btn ghost" data-act="trip-move" data-id="${esc(t.id)}">${tx('여행 날짜를 지금 날짜로 바꾸기', 'Move it to these dates')}</button></div>`).join('')}</div>` : ''}
     <div class="plan-tools${sv ? ' shared' : ''}">
-      ${sv ? `<button type="button" class="btn" data-act="keep">💾 내 여행으로 저장</button>
-      <button type="button" class="btn ghost" data-act="close">✕ 내 일정 보기</button>`
-      : `<button type="button" class="btn${editing ? '' : ' ghost'}" data-act="toggle" aria-pressed="${editing}">${editing ? '✓ 편집 끝내기' : '✏️ 일정 편집'}</button>
-      ${custom ? '<button type="button" class="btn ghost" data-act="reset">↺ 추천 일정으로 되돌리기</button>' : ''}`}
-      <button type="button" class="btn ghost" data-act="share">🔗 일정 링크 공유</button>
-      ${sv ? `<p>📩 공유받은 일정을 보고 있어요. 저장하기 전에는 내 일정이 바뀌지 않아요.${sv.expired ? ' 보낸 일정의 날짜가 지나서 날짜를 새로 넣었어요. 위에서 여행 날짜를 골라 주세요.' : ''}${sv.missing ? ` 지금은 목록에 없는 명소 ${sv.missing}곳은 빠졌어요.` : ''}</p>` : ''}
-      ${editing ? '<p>▲▼로 순서를 바꾸고, 날짜를 골라 옮기거나 뺄 수 있어요. 시간은 자동으로 다시 계산되고, 편집한 일정은 이 브라우저에 저장돼요.</p>' : ''}
+      ${sv ? `<button type="button" class="btn" data-act="keep">💾 ${tx('내 여행으로 저장', 'Save to my trips')}</button>
+      <button type="button" class="btn ghost" data-act="close">✕ ${tx('내 일정 보기', 'Back to my plan')}</button>`
+      : `<button type="button" class="btn${editing ? '' : ' ghost'}" data-act="toggle" aria-pressed="${editing}">${editing ? tx('✓ 편집 끝내기', '✓ Done editing') : tx('✏️ 일정 편집', '✏️ Edit plan')}</button>
+      ${custom ? `<button type="button" class="btn ghost" data-act="reset">↺ ${tx('추천 일정으로 되돌리기', 'Reset to suggested')}</button>` : ''}`}
+      <button type="button" class="btn ghost" data-act="share">🔗 ${tx('일정 링크 공유', 'Share plan link')}</button>
+      ${sv ? `<p>📩 ${tx('공유받은 일정을 보고 있어요. 저장하기 전에는 내 일정이 바뀌지 않아요.', 'You are viewing a shared plan. Your own plan stays unchanged until you save.')}${sv.expired ? tx(' 보낸 일정의 날짜가 지나서 날짜를 새로 넣었어요. 위에서 여행 날짜를 골라 주세요.', ' Its dates have passed, so new ones were filled in. Pick your dates above.') : ''}${sv.missing ? tx(` 지금은 목록에 없는 명소 ${sv.missing}곳은 빠졌어요.`, ` ${plural(sv.missing, 'sight')} no longer listed ${sv.missing === 1 ? 'was' : 'were'} left out.`) : ''}</p>` : ''}
+      ${editing ? `<p>${tx('▲▼로 순서를 바꾸고, 날짜를 골라 옮기거나 뺄 수 있어요. 시간은 자동으로 다시 계산되고, 편집한 일정은 이 브라우저에 저장돼요.', 'Use ▲▼ to reorder, pick a day to move a sight, or remove it. Times recalculate automatically and your edits are saved in this browser.')}</p>` : ''}
     </div>
     <div class="map-wrap" id="planMapWrap">
-      <div class="map-days" role="group" aria-label="지도에 표시할 날짜"><button type="button" class="chip sm on" data-day="all">전체</button>${timeline.map((p, i) =>
-        p.rows.some(r => r.spot && spotGeo(r.spot)) ? `<button type="button" class="chip sm" data-day="${i}"><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${i + 1}일차</button>` : '').join('')}</div>
-      <div class="plan-map" id="planMap" role="img" aria-label="${esc(city)} 일정 지도"></div>
+      <div class="map-days" role="group" aria-label="${tx('지도에 표시할 날짜', 'Days shown on the map')}"><button type="button" class="chip sm on" data-day="all">${tx('전체', 'All')}</button>${timeline.map((p, i) =>
+        p.rows.some(r => r.spot && spotGeo(r.spot)) ? `<button type="button" class="chip sm" data-day="${i}"><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${dayNo(i)}</button>` : '').join('')}</div>
+      <div class="plan-map" id="planMap" role="img" aria-label="${esc(tx(`${city} 일정 지도`, `${city} plan map`))}"></div>
     </div>
     <div class="plan">${timeline.map((p, i) => `
-      <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">길찾기 →</a>` : ''}</div>
-        ${p.g ? `<p class="day-tag">🚆 근교 당일치기 · ${esc(p.g)}</p>` : ''}
+      <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">${tx('길찾기 →', 'Directions →')}</a>` : ''}</div>
+        ${p.g ? `<p class="day-tag">🚆 ${tx('근교 당일치기', 'Day trip')} · ${esc(p.g)}</p>` : ''}
         <ol class="tl">${p.rows.map(r => r.kind === 'move' ? `<li class="tl-move">${esc(r.text)}</li>`
-          : r.kind === 'spot' ? `<li class="tl-spot${isPicked(r.spot) ? ' picked' : ''}"><span class="tm">${hm(r.time)}</span><div>${isPicked(r.spot) ? '<span class="pk" aria-label="저장한 곳">♥</span> ' : ''}<b>${esc(r.spot.ko)}</b>
-              <small>${r.m.stay}시간 · ${esc(r.m.fee)}${r.m.note ? ` · <em>${esc(r.m.note)}</em>` : ''}${r.inside ? ' · 점심은 안에서' : ''}</small>${r.warn ? `<small><em>⚠ ${r.warn}</em></small>` : ''}${editing ? tools(r.spot, i, p.list.indexOf(r.spot)) : ''}</div></li>`
-          : r.kind === 'meal' ? `<li class="tl-meal"><span class="tm">${rowTime(r)}</span><div>${esc(r.text)} <a class="link sm" href="${nearMap(r.near)}" target="_blank" rel="noopener">주변 맛집</a></div></li>`
+          : r.kind === 'spot' ? `<li class="tl-spot${isPicked(r.spot) ? ' picked' : ''}"><span class="tm">${hm(r.time)}</span><div>${isPicked(r.spot) ? '<span class="pk" aria-label="saved">♥</span> ' : ''}<b>${esc(nm(r.spot))}</b>
+              <small>${tx(`${r.m.stay}시간`, `${r.m.stay} h`)} · ${esc(r.m.fee)}${r.m.note ? ` · <em>${esc(r.m.note)}</em>` : ''}${r.inside ? tx(' · 점심은 안에서', ' · lunch inside') : ''}</small>${r.warn ? `<small><em>⚠ ${r.warn}</em></small>` : ''}${editing ? tools(r.spot, i, p.list.indexOf(r.spot)) : ''}</div></li>`
+          : r.kind === 'meal' ? `<li class="tl-meal"><span class="tm">${rowTime(r)}</span><div>${esc(r.text)} <a class="link sm" href="${nearMap(r.near)}" target="_blank" rel="noopener">${tx('주변 맛집', 'Food nearby')}</a></div></li>`
           : `<li class="tl-${r.kind}"><span class="tm">${rowTime(r)}</span><div>${esc(r.text)}</div></li>`).join('')}</ol>${editing && unplaced.length
-        ? `<select class="day-add" data-act="add" data-day="${i}" aria-label="${i + 1}일차에 명소 추가"><option value="">＋ 명소 추가</option>${unplaced.map(s => `<option value="${esc(s.ko)}">${esc(spotName(s))}</option>`).join('')}</select>` : ''}</div>`).join('')}
+        ? `<select class="day-add" data-act="add" data-day="${i}" aria-label="${tx(`${i + 1}일차에 명소 추가`, `Add a sight to day ${i + 1}`)}"><option value="">${tx('＋ 명소 추가', '＋ Add a sight')}</option>${unplaced.map(s => `<option value="${esc(s.ko)}">${esc(spotName(s))}</option>`).join('')}</select>` : ''}</div>`).join('')}
     </div>
-    <p class="muted small">⏱ 이동시간은 직선거리로 계산한 대략치이고, 운영시간·요금은 명소 카드의 '지도·운영시간'에서 확인하세요.</p>
-    ${unplaced.length ? `<p class="muted small">시간이 되면 더 둘러볼 곳: ${unplaced.map(s => esc(spotName(s))).join(', ')}</p>` : ''}
-    <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
-      ${custom && !placed.length ? '' : `<a class="btn ghost" href="${route(custom ? placed : spots)}" target="_blank" rel="noopener">🗺 Google 지도로 보기</a>`}</div>`;
+    <p class="muted small">⏱ ${tx("이동시간은 직선거리로 계산한 대략치이고, 운영시간·요금은 명소 카드의 '지도·운영시간'에서 확인하세요.", "Travel times are rough straight-line estimates. Check hours and prices via 'Map & hours' on each card.")}</p>
+    ${unplaced.length ? `<p class="muted small">${tx('시간이 되면 더 둘러볼 곳', 'If you have time')}: ${unplaced.map(s => esc(spotName(s))).join(', ')}</p>` : ''}
+    <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 ${tx('일정 복사', 'Copy plan')}</button>
+      ${custom && !placed.length ? '' : `<a class="btn ghost" href="${route(custom ? placed : spots)}" target="_blank" rel="noopener">🗺 ${tx('Google 지도로 보기', 'Open in Google Maps')}</a>`}</div>`;
   $('#planCopy').addEventListener('click', async () => {
-    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${planURL()}`;
-    try { await navigator.clipboard.writeText(t); toast('일정을 복사했어요'); } catch { prompt('아래 내용을 복사하세요', t); }
+    const t = `${tx(`${c.ko} 여행 일정 (떠날지도)`, `${c.name} itinerary (Maybe Go)`)}\n\n${text}\n\n${planURL()}`;
+    try { await navigator.clipboard.writeText(t); toast(tx('일정을 복사했어요', 'Plan copied')); } catch { prompt(tx('아래 내용을 복사하세요', 'Copy the text below'), t); }
   });
   drawPlanMap(timeline, center);
 }
@@ -1605,14 +1630,14 @@ function paintPlanMap(timeline, center) {
   planMap?.remove();
   planMap = L.map('planMap', { scrollWheelZoom: false, attributionControl: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 기여자' }).addTo(planMap);
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ' + tx('기여자', 'contributors') }).addTo(planMap);
   const layers = timeline.map((p, i) => {
     const color = DAY_COLORS[i % DAY_COLORS.length], pts = [];
     const group = L.layerGroup();
     p.rows.filter(r => r.spot && spotGeo(r.spot)).forEach((r, k) => {
       const ll = spotGeo(r.spot); pts.push(ll);
       L.marker(ll, { icon: L.divIcon({ className: 'pin', html: `<span style="background:${color}">${i + 1}-${k + 1}</span>`, iconSize: [34, 22], iconAnchor: [17, 11] }) })
-        .bindPopup(`<b>${esc(r.spot.ko)}</b><br>${i + 1}일차 ${clock(r.time)} · ${r.m.stay}시간`).addTo(group);
+        .bindPopup(`<b>${esc(nm(r.spot))}</b><br>${tx(`${i + 1}일차`, `Day ${i + 1}`)} ${clock(r.time)} · ${tx(`${r.m.stay}시간`, `${r.m.stay} h`)}`).addTo(group);
     });
     if (pts.length > 1) L.polyline(pts, { color, weight: 3, opacity: .8, dashArray: p.g ? '6 6' : null }).addTo(group);
     return { group, pts };
@@ -1634,19 +1659,20 @@ function paintPlanMap(timeline, center) {
 function cityFood(ap) {
   const f = CITY_FOOD[SPOT_ALIAS[ap?.code] || ap?.code];
   const split = (s, keys) => (s || '').split(';').filter(Boolean).map(x => { const v = x.split('|'); return Object.fromEntries(keys.map((k, i) => [k, v[i]])); });
-  return { food: split(f?.food, ['n', 'd']), street: split(f?.street, ['n', 'd', 'q']) };
+  const en = EN && EN_FOOD[SPOT_ALIAS[ap?.code] || ap?.code] || [];
+  return { food: localizeList(en[0], split(f?.food, ['n', 'd'])), street: localizeList(en[1], split(f?.street, ['n', 'd', 'q'])) };
 }
 function renderFood() {
   const c = current, box = $('#sec-food'); if (!box) return;
   const ap = curAp, city = cityOf(ap), f = cityFood(ap);
   const gm = q => 'https://www.google.com/maps/search/?api=1&query=' + enc(q);
   const nv = q => 'https://map.naver.com/p/search/' + enc(q);
-  box.innerHTML = `<div class="block-title"><h3>🍜 ${esc(city)} 먹거리</h3><small>대표 음식과 맛집 거리</small></div>
+  box.innerHTML = `<div class="block-title"><h3>🍜 ${esc(city)} ${tx('먹거리', 'food')}</h3><small>${tx('대표 음식과 맛집 거리', 'Local dishes and food streets')}</small></div>
     ${f.food.length ? `<div class="food-grid">${f.food.map(x => `<div class="food"><b>${esc(x.n)}</b><p>${esc(x.d)}</p>
-      <div class="mini"><a href="${gm(x.n + ' ' + ap.en)}" target="_blank" rel="noopener">Google 지도</a><a href="${nv(city + ' ' + x.n)}" target="_blank" rel="noopener">네이버 지도</a></div></div>`).join('')}</div>` : ''}
-    ${f.street.length ? `<h4 class="sub-h">🏮 맛집 거리 · 시장</h4><div class="areas">${f.street.map(x => `<div class="area"><b>${esc(x.n)}</b><p>${esc(x.d)}</p>
-      <div class="mini"><a href="${gm(x.q)}" target="_blank" rel="noopener">지도에서 보기</a><a href="${gm('restaurants near ' + x.q)}" target="_blank" rel="noopener">주변 맛집</a></div></div>`).join('')}</div>` : ''}
-    ${!f.food.length && !f.street.length ? `<div class="more-grid"><a class="more" href="${gm('restaurants in ' + ap.en)}" target="_blank" rel="noopener"><span class="mi">🍜</span><span><b>${esc(city)} 맛집</b><small>Google 지도</small></span></a></div>` : ''}`;
+      <div class="mini"><a href="${gm(x.n + ' ' + ap.en)}" target="_blank" rel="noopener">${tx('Google 지도', 'Google Maps')}</a>${EN ? '' : `<a href="${nv(city + ' ' + x.n)}" target="_blank" rel="noopener">네이버 지도</a>`}</div></div>`).join('')}</div>` : ''}
+    ${f.street.length ? `<h4 class="sub-h">🏮 ${tx('맛집 거리 · 시장', 'Food streets & markets')}</h4><div class="areas">${f.street.map(x => `<div class="area"><b>${esc(x.n)}</b><p>${esc(x.d)}</p>
+      <div class="mini"><a href="${gm(x.q)}" target="_blank" rel="noopener">${tx('지도에서 보기', 'View on map')}</a><a href="${gm('restaurants near ' + x.q)}" target="_blank" rel="noopener">${tx('주변 맛집', 'Food nearby')}</a></div></div>`).join('')}</div>` : ''}
+    ${!f.food.length && !f.street.length ? `<div class="more-grid"><a class="more" href="${gm('restaurants in ' + ap.en)}" target="_blank" rel="noopener"><span class="mi">🍜</span><span><b>${esc(tx(`${city} 맛집`, `Food in ${city}`))}</b><small>${tx('Google 지도', 'Google Maps')}</small></span></a></div>` : ''}`;
 }
 
 /* ---------- 항공편 · 호텔 ---------- */
@@ -1654,14 +1680,15 @@ function renderTravel() {
   const c = current; if (!c || !$('#sec-flights')) return;
   const ap = curAp, to = ap.code, city = cityOf(ap);
   const { from, d1, d2, adults, children, infants, direct } = S, oneway = S.trip === 'oneway';
-  const fromName = from === 'ICN' ? '인천' : '김포';
+  const fromName = from === 'ICN' ? tx('인천', 'Seoul Incheon') : tx('김포', 'Seoul Gimpo');
   const n = Math.max(1, nights());
   const kidAges = [...Array(children).fill(8), ...Array(infants).fill(1)];
-  const paxTxt = [`성인 ${adults}`, children && `소아 ${children}`, infants && `유아 ${infants}`].filter(Boolean).join(' · ');
+  const paxTxt = paxText(adults, children, infants);
 
   const gfq = `Flights to ${to || ap.en} from ${from} on ${d1}${oneway ? ' one way' : ` through ${d2}`} for ${adults} adults${children ? ` ${children} children` : ''}${infants ? ` ${infants} infants` : ''}${direct ? ' nonstop' : ''}`;
-  const gf = 'https://www.google.com/travel/flights?hl=ko&curr=KRW&q=' + enc(gfq);
-  const skyBase = to ? `https://www.skyscanner.co.kr/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/` : 'https://www.skyscanner.co.kr/';
+  const gf = `https://www.google.com/travel/flights?hl=${LANG}&curr=KRW&q=` + enc(gfq);
+  const skyHost = tx('https://www.skyscanner.co.kr/', 'https://www.skyscanner.net/');
+  const skyBase = to ? `${skyHost}transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/` : skyHost;
   const skyQ = `?adultsv2=${adults}${kidAges.length ? '&childrenv2=' + kidAges.join('%7C') : ''}&cabinclass=economy${direct ? '&preferdirects=true' : ''}${oneway ? '&rtn=0' : '&rtn=1'}`;
   const sky = aff('skyscanner', to ? `${skyBase}${yymmdd(d1)}/${oneway ? '' : yymmdd(d2) + '/'}${skyQ}` : skyBase);
   const skyMonth = aff('skyscanner', to ? `${skyBase}${d1.slice(2, 7).replace('-', '')}/${oneway ? '' : d2.slice(2, 7).replace('-', '') + '/'}${skyQ}` : skyBase);
@@ -1669,49 +1696,49 @@ function renderTravel() {
                 : 'https://flight.naver.com/';
 
   $('#sec-flights').innerHTML = `
-    <div class="block-title"><h3>✈️ 항공편</h3><small>${fromName} → ${esc(city)} · ${fmtD(d1)}${oneway ? ' 편도' : ' – ' + fmtD(d2)} · ${paxTxt}${direct ? ' · 직항' : ''}</small></div>
+    <div class="block-title"><h3>✈️ ${tx('항공편', 'Flights')}</h3><small>${fromName} → ${esc(city)} · ${fmtD(d1)}${oneway ? tx(' 편도', ' · one way') : ' – ' + fmtD(d2)} · ${paxTxt}${direct ? tx(' · 직항', ' · nonstop') : ''}</small></div>
     <div class="two">
       <div class="panel">
-        ${c.aps.length > 1 ? `<h4>도착 공항</h4><div class="ap-pick" role="radiogroup" aria-label="도착 공항 선택">${c.aps.map(a =>
+        ${c.aps.length > 1 ? `<h4>${tx('도착 공항', 'Arrival airport')}</h4><div class="ap-pick" role="radiogroup" aria-label="${tx('도착 공항 선택', 'Choose arrival airport')}">${c.aps.map(a =>
           `<button type="button" role="radio" aria-checked="${a.code === to}" data-ap="${a.code}" class="${a.code === to ? 'on' : ''}">${esc(a.name)} <small>${a.code}</small></button>`).join('')}</div>` : ''}
         <div class="route">
           <div class="ap">${from}<small>${fromName}</small></div>
           <div class="line"><i aria-hidden="true">✈</i>${ap.time ? `<span class="dur">${esc(ap.time)}</span>` : ''}</div>
           <div class="ap">${to || '✈'}<small>${esc(city)}</small></div>
         </div>
-        ${c.custom ? `<p class="note">상세 노선 정보가 없는 여행지예요. 오른쪽 사이트에서 공항을 골라 검색해 주세요.</p>` : `
+        ${c.custom ? `<p class="note">${tx('상세 노선 정보가 없는 여행지예요. 오른쪽 사이트에서 공항을 골라 검색해 주세요.', 'No route details for this place. Pick an airport on one of the search sites.')}</p>` : `
         <dl class="kv">
-          <dt>도착 공항</dt><dd>${esc(ap.name)} (${to})</dd>
-          <dt>비행 시간</dt><dd>${esc(ap.time)}${from !== 'ICN' ? ' <small class="muted">(인천 기준)</small>' : ''}</dd>
-          <dt>주요 항공사</dt><dd>${esc(c.airlines)}</dd>
-          <dt>입국</dt><dd>${esc(c.visa)}</dd>
+          <dt>${tx('도착 공항', 'Airport')}</dt><dd>${esc(ap.name)} (${to})</dd>
+          <dt>${tx('비행 시간', 'Flight time')}</dt><dd>${esc(ap.time)}${from !== 'ICN' ? ` <small class="muted">${tx('(인천 기준)', '(from Incheon)')}</small>` : ''}</dd>
+          <dt>${tx('주요 항공사', 'Airlines')}</dt><dd>${esc(c.airlines)}</dd>
+          <dt>${tx('입국', 'Entry')}</dt><dd>${esc(c.visa)}</dd>
         </dl>`}
-        <p class="note">※ 비행시간은 대략치예요. ${from === 'GMP' ? '김포 출발 국제선은 일본·대만·중국 일부 노선만 있어요. ' : ''}비자·입국 정책은 출발 전에 꼭 확인하세요.</p>
+        <p class="note">${tx('※ 비행시간은 대략치예요. ', 'Flight times are approximate. ')}${from === 'GMP' ? tx('김포 출발 국제선은 일본·대만·중국 일부 노선만 있어요. ', 'Gimpo has only a few international routes (Japan, Taiwan, China). ') : ''}${tx('비자·입국 정책은 출발 전에 꼭 확인하세요.', 'Entry rules shown are for Korean passports; check them before you go.')}</p>
       </div>
       <div class="links">
-        <a class="lnk" href="${gf}" target="_blank" rel="noopener"><div><b>Google 항공편</b><span>가격 추이 · 최저가 날짜 그래프</span></div><span class="arr">검색 →</span></a>
-        <a class="lnk" href="${sky}" target="_blank" rel="${rel('skyscanner')}"><div><b>스카이스캐너</b><span>항공사·여행사 가격 한 번에 비교</span></div><span class="arr">검색 →</span></a>
-        <a class="lnk" href="${nv}" target="_blank" rel="noopener"><div><b>네이버 항공권</b><span>국내 여행사 특가 · 원화 결제</span></div><span class="arr">검색 →</span></a>
-        ${to ? `<a class="lnk soft" href="${skyMonth}" target="_blank" rel="${rel('skyscanner')}"><div><b>📆 날짜 유연하게</b><span>${parseD(d1).getMonth() + 1}월 전체에서 가장 싼 날 찾기 (스카이스캐너)</span></div><span class="arr">→</span></a>` : ''}
+        <a class="lnk" href="${gf}" target="_blank" rel="noopener"><div><b>${tx('Google 항공편', 'Google Flights')}</b><span>${tx('가격 추이 · 최저가 날짜 그래프', 'Price trends and cheapest dates')}</span></div><span class="arr">${tx('검색 →', 'Search →')}</span></a>
+        <a class="lnk" href="${sky}" target="_blank" rel="${rel('skyscanner')}"><div><b>${tx('스카이스캐너', 'Skyscanner')}</b><span>${tx('항공사·여행사 가격 한 번에 비교', 'Compare airlines and agents')}</span></div><span class="arr">${tx('검색 →', 'Search →')}</span></a>
+        ${EN ? '' : `<a class="lnk" href="${nv}" target="_blank" rel="noopener"><div><b>네이버 항공권</b><span>국내 여행사 특가 · 원화 결제</span></div><span class="arr">검색 →</span></a>`}
+        ${to ? `<a class="lnk soft" href="${skyMonth}" target="_blank" rel="${rel('skyscanner')}"><div><b>📆 ${tx('날짜 유연하게', 'Flexible dates')}</b><span>${tx(`${parseD(d1).getMonth() + 1}월 전체에서 가장 싼 날 찾기 (스카이스캐너)`, `Cheapest day in ${MON[parseD(d1).getMonth()]} (Skyscanner)`)}</span></div><span class="arr">→</span></a>` : ''}
       </div>
     </div>`;
 
   const ageQ = kidAges.map(a => `&age=${a}`).join('');
-  const bk = q => aff('booking', `https://www.booking.com/searchresults.ko.html?ss=${enc(q)}&checkin=${d1}&checkout=${oneway ? addDays(d1, 1) : d2}&group_adults=${adults}&group_children=${kidAges.length}${ageQ}&no_rooms=1&lang=ko`);
-  const ag = q => aff('agoda', `https://www.agoda.com/ko-kr/search?textToSearch=${enc(q)}&checkIn=${d1}&los=${n}&adults=${adults}&children=${kidAges.length}${kidAges.length ? '&childages=' + kidAges.join(',') : ''}&rooms=1`);
-  const gh = q => `https://www.google.com/travel/search?hl=ko&curr=KRW&q=${enc(q + ' hotels')}`;
+  const bk = q => aff('booking', `https://www.booking.com/searchresults.${tx('ko', 'en-gb')}.html?ss=${enc(q)}&checkin=${d1}&checkout=${oneway ? addDays(d1, 1) : d2}&group_adults=${adults}&group_children=${kidAges.length}${ageQ}&no_rooms=1&lang=${tx('ko', 'en-gb')}&selected_currency=KRW`);
+  const ag = q => aff('agoda', `https://www.agoda.com/${tx('ko-kr', 'en-us')}/search?textToSearch=${enc(q)}&checkIn=${d1}&los=${n}&adults=${adults}&children=${kidAges.length}${kidAges.length ? '&childages=' + kidAges.join(',') : ''}&rooms=1`);
+  const gh = q => `https://www.google.com/travel/search?hl=${LANG}&curr=KRW&q=${enc(q + ' hotels')}`;
   $('#sec-hotels').innerHTML = `
-    <div class="block-title"><h3>🏨 호텔</h3><small>${esc(city)} · ${oneway ? '1박 (편도)' : n + '박'} · ${paxTxt}</small></div>
+    <div class="block-title"><h3>🏨 ${tx('호텔', 'Hotels')}</h3><small>${esc(city)} · ${oneway ? tx('1박 (편도)', '1 night (one way)') : nightsText(n)} · ${paxTxt}</small></div>
     <div class="links three">
-      <a class="lnk" href="${bk(ap.en)}" target="_blank" rel="${rel('booking')}"><div><b>부킹닷컴</b><span>무료 취소 옵션 많음</span></div><span class="arr">→</span></a>
-      <a class="lnk" href="${ag(ap.en)}" target="_blank" rel="${rel('agoda')}"><div><b>아고다</b><span>아시아 숙소 특가</span></div><span class="arr">→</span></a>
-      <a class="lnk" href="${gh(ap.en)}" target="_blank" rel="noopener"><div><b>Google 호텔</b><span>지도로 위치·가격 비교</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${bk(ap.en)}" target="_blank" rel="${rel('booking')}"><div><b>${tx('부킹닷컴', 'Booking.com')}</b><span>${tx('무료 취소 옵션 많음', 'Many free-cancellation rates')}</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${ag(ap.en)}" target="_blank" rel="${rel('agoda')}"><div><b>${tx('아고다', 'Agoda')}</b><span>${tx('아시아 숙소 특가', 'Deals across Asia')}</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${gh(ap.en)}" target="_blank" rel="noopener"><div><b>${tx('Google 호텔', 'Google Hotels')}</b><span>${tx('지도로 위치·가격 비교', 'Compare location and price on a map')}</span></div><span class="arr">→</span></a>
     </div>
     <div class="panel">
-      <h4>추천 숙소 지역 · ${esc(city)}</h4>
+      <h4>${tx('추천 숙소 지역', 'Where to stay')} · ${esc(city)}</h4>
       <div class="areas">${areasFor(c, ap).map(a => `
         <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
-          <div class="mini"><a href="${bk(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('booking')}">부킹닷컴</a><a href="${ag(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('agoda')}">아고다</a><a href="${gh(a.q || a.n + ' ' + city)}" target="_blank" rel="noopener">Google 호텔</a><a href="${mapLink(a.q || a.n, a.q ? '' : ap.en)}" target="_blank" rel="noopener">지도</a></div></div>`).join('')}
+          <div class="mini"><a href="${bk(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('booking')}">${tx('부킹닷컴', 'Booking.com')}</a><a href="${ag(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('agoda')}">${tx('아고다', 'Agoda')}</a><a href="${gh(a.q || a.n + ' ' + city)}" target="_blank" rel="noopener">${tx('Google 호텔', 'Google Hotels')}</a><a href="${mapLink(a.q || a.n, a.q ? '' : ap.en)}" target="_blank" rel="noopener">${tx('지도', 'Map')}</a></div></div>`).join('')}
       </div>
     </div>`;
 }
@@ -1738,8 +1765,18 @@ function renderMore() {
     ['🗺', '맛집 · 지도', '네이버 지도', `https://map.naver.com/p/search/${enc(city + ' 맛집')}`],
     ['💬', '여행 브이로그', 'YouTube', 'https://www.youtube.com/results?search_query=' + enc(city + ' 여행 브이로그')]
   ];
-  box.innerHTML = `<div class="block-title"><h3>🎟 투어 · 여행 준비</h3><small>${esc(city)}</small></div>
-    <div class="more-grid">${items.map(([ic, t, s, u, k]) => `<a class="more" href="${u}" target="_blank" rel="${rel(k || '')}"><span class="mi">${ic}</span><span><b>${t}</b><small>${s}</small></span></a>`).join('')}</div>`;
+  // 영어판은 한국어 전용 서비스(마이리얼트립·네이버) 대신 영어로 쓸 수 있는 곳
+  const klook = q => aff('klook', 'https://www.klook.com/en-US/search/result/?query=' + enc(q));
+  const itemsEn = [
+    ['🎟', 'Tours & tickets', 'Klook', klook(en), 'klook'],
+    ['🎢', 'Experiences', 'GetYourGuide', 'https://www.getyourguide.com/s/?q=' + enc(en)],
+    ['📶', 'eSIM · SIM', 'Klook', klook(`${c.custom ? en : c.name} eSIM`), 'klook'],
+    ['🚗', 'Car rental', 'Klook', klook(`${en} car rental`), 'klook'],
+    ['🍜', 'Restaurants', 'Google Maps', `https://www.google.com/maps/search/?api=1&query=${enc('restaurants in ' + en)}`],
+    ['💬', 'Travel vlogs', 'YouTube', 'https://www.youtube.com/results?search_query=' + enc(en + ' travel vlog')]
+  ];
+  box.innerHTML = `<div class="block-title"><h3>🎟 ${tx('투어 · 여행 준비', 'Tours & prep')}</h3><small>${esc(city)}</small></div>
+    <div class="more-grid">${(EN ? itemsEn : items).map(([ic, t, s, u, k]) => `<a class="more" href="${u}" target="_blank" rel="${rel(k || '')}"><span class="mi">${ic}</span><span><b>${t}</b><small>${s}</small></span></a>`).join('')}</div>`;
 }
 
 /* ---------- 탭: 현재 위치 표시 ---------- */
@@ -1763,17 +1800,17 @@ $('#main').addEventListener('click', e => {
    ========================================================= */
 $('.logo').addEventListener('click', e => {
   e.preventDefault(); $('#q').value = '';
-  history.pushState(null, '', location.pathname); renderHome(); scrollTo({ top: 0, behavior: 'smooth' });
+  history.pushState(null, '', withLang(location.pathname)); renderHome(); scrollTo({ top: 0, behavior: 'smooth' });
 });
 $('#savedBtn').addEventListener('click', () => {
-  if (!getSaved().length) return toast('명소 카드의 ♥를 누르면 보관함에 담겨요');
-  if (current) { history.pushState(null, '', location.pathname); renderHome(); }
+  if (!getSaved().length) return toast(tx('명소 카드의 ♥를 누르면 보관함에 담겨요', 'Tap ♥ on a sight card to save it'));
+  if (current) { history.pushState(null, '', withLang(location.pathname)); renderHome(); }
   setTimeout(() => $('#savedSec')?.scrollIntoView({ behavior: 'smooth' }), 50);
 });
 function applyTheme() {
   const t = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   $('#themeIc').textContent = t === 'dark' ? '☀️' : '🌙';
-  $('#themeBtn').setAttribute('aria-label', t === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환');
+  $('#themeBtn').setAttribute('aria-label', t === 'dark' ? tx('라이트 모드로 전환', 'Switch to light mode') : tx('다크 모드로 전환', 'Switch to dark mode'));
   document.querySelector('meta[name=theme-color]').content = t === 'dark' ? '#0f1420' : '#ff6b4a';
 }
 $('#themeBtn').addEventListener('click', () => {
@@ -1785,7 +1822,7 @@ $('#fsBtn').addEventListener('click', () => {
   const lg = document.documentElement.dataset.fs !== 'lg';
   lg ? document.documentElement.dataset.fs = 'lg' : delete document.documentElement.dataset.fs;
   store.set('fs', lg ? 'lg' : 'md'); $('#fsBtn').setAttribute('aria-pressed', lg);
-  toast(lg ? '글자를 크게 표시해요' : '기본 글자 크기로 돌아왔어요');
+  toast(lg ? tx('글자를 크게 표시해요', 'Larger text on') : tx('기본 글자 크기로 돌아왔어요', 'Default text size'));
 });
 $('#fsBtn').setAttribute('aria-pressed', document.documentElement.dataset.fs === 'lg');
 // 검색창이 화면 밖으로 나가면 하단 검색·맨 위로 버튼 표시

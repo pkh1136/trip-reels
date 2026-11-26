@@ -13,7 +13,7 @@ const slugs = [];
 for (const d of ctx.DESTS) {
   const slug = ctx.INFO[d.ko]?.slug; if (!slug) continue;
   slugs.push(slug);
-  const title = `${d.ko} 여행 · 트립릴스`;
+  const title = `${d.ko} 여행 · 떠날지도`;
   const desc = `${d.tagline} — ${d.spots.slice(0, 4).map(s => s.ko).join(', ')} 영상과 환율·날씨·항공편·호텔 정보`;
   const target = `../?d=${slug}`;
   const html = `<!doctype html>
@@ -22,7 +22,7 @@ for (const d of ctx.DESTS) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${BASE}?d=${slug}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="트립릴스">
+<meta property="og:type" content="website"><meta property="og:site_name" content="떠날지도">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${BASE}og.png"><meta property="og:url" content="${BASE}${slug}/">
 <meta name="twitter:card" content="summary_large_image">
