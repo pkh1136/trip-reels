@@ -1,0 +1,17 @@
+{
+  "name": "트립릴스 · 여행지 영상 미리보기",
+  "short_name": "트립릴스",
+  "description": "여행지 명소를 짧은 영상으로 미리 보고 환율·날씨·항공편·호텔까지 한 번에.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff6b4a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
