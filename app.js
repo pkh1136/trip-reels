@@ -1009,7 +1009,6 @@ async function showWeather() {
 /* ---------- 여행 정보: 날씨 · 추천 시기 · 환율 계산기 · 예산 · 꿀팁 ---------- */
 function renderInfo() {
   const c = current, I = c.info, box = $('#sec-info'); if (!box) return;
-  const days = Math.max(1, nights() || 4), ppl = S.adults + S.children;
   const tripM = parseD(S.d1).getMonth() + 1;
   box.innerHTML = `
     <div class="block-title"><h3>📋 여행 정보</h3><small>${esc(cityOf(curAp))} 기준</small></div>
@@ -1020,18 +1019,34 @@ function renderInfo() {
           `<span class="mo${I.best.includes(k) ? ' best' : ''}${k === tripM ? ' trip' : ''}" title="${k}월${I.best.includes(k) ? ' 추천' : ''}">${k}</span>`).join('')}</div>
         <p class="muted small">${I.best.includes(tripM) ? `✅ 여행 날짜(${tripM}월)는 추천 시기예요` : `ℹ️ 여행 날짜(${tripM}월)는 추천 시기가 아니에요`}</p></div>` : ''}
       ${c.cur ? `<div class="panel" id="calcBox"><h4>💱 환율 계산기</h4><p class="muted">환율 불러오는 중…</p></div>` : ''}
-      ${I.budget ? `<div class="panel"><h4>💰 1일 예상 경비 <small class="muted">1인 · 숙박 포함</small></h4>
-        <div class="budget">${['알뜰', '보통', '여유'].map((l, i) => `<div class="tier${i === 1 ? ' mid' : ''}"><small>${l}</small><b>${I.budget[i]}만원</b></div>`).join('')}</div>
-        <p class="muted small">보통 기준 ${days}${nights() ? '박' : '일'} · ${ppl}명 ≈ <b class="ink">${(I.budget[1] * days * ppl).toLocaleString()}만원</b> (항공권 제외, 대략치)</p></div>` : ''}
+      ${I.budget ? `<div class="panel" id="budgetBox"><h4>💰 1일 예상 경비 <small class="muted">1인 · 숙박 포함</small></h4>
+        <div class="budget" role="group" aria-label="경비 수준 선택">${TIERS.map((l, i) => `<button type="button" class="tier" data-tier="${i}"><small>${l}</small><b>${I.budget[i]}만원</b></button>`).join('')}</div>
+        <div class="budget-sum" aria-live="polite"></div></div>` : ''}
       ${I.tips ? `<div class="panel"><h4>💡 현지 꿀팁</h4><ul class="tips">${I.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
         <a class="link" href="https://www.0404.go.kr/" target="_blank" rel="noopener">🛡 외교부 해외안전여행에서 여행경보 확인 →</a></div>` : ''}
     </div>`;
-  renderCalc();
+  renderCalc(); renderBudget();
   // 제목 옆 배지도 '선택한 여행 날짜' 기준 (오늘 기준과 섞이지 않게)
   const badge = $('#seasonBadge');
   if (badge) badge.innerHTML = I.best?.includes(tripM) ? `<span class="now-good">${tripM}월 여행 추천 시기</span>` : '';
   if (current === c) showWeather();
 }
+
+/* ---------- 예상 경비: 알뜰 · 보통 · 여유를 누르면 총액을 다시 계산 (선택은 기억) ---------- */
+const TIERS = ['알뜰', '보통', '여유'];
+let budgetTier = TIERS[store.get('tier', 1)] ? store.get('tier', 1) : 1;
+function renderBudget() {
+  const box = $('#budgetBox'), b = current?.info.budget; if (!box || !b) return;
+  const t = budgetTier, days = Math.max(1, nights() || 4), unit = nights() ? '박' : '일', ppl = S.adults + S.children;
+  $$('.tier', box).forEach(btn => { const on = +btn.dataset.tier === t; btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on); });
+  $('.budget-sum', box).innerHTML = `<small>${TIERS[t]} 기준 총 예상 경비</small><b>약 ${(b[t] * days * ppl).toLocaleString()}만원</b>
+    <small>${b[t]}만원 × ${days}${unit} × ${ppl}명${ppl > 1 ? ` (1인 ${(b[t] * days).toLocaleString()}만원)` : ''}</small>
+    <small>항공권${S.infants ? '·유아' : ''} 제외, 대략치</small>`;
+}
+$('#main').addEventListener('click', e => {
+  const btn = e.target.closest('.tier[data-tier]'); if (!btn) return;
+  budgetTier = +btn.dataset.tier; store.set('tier', budgetTier); renderBudget();
+});
 function renderCalc() {
   const c = current, box = $('#calcBox'); if (!box || !c?._fx) return;
   const unit = fxUnit(c._fx);
