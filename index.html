@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>트립릴스 · 여행지 영상 미리보기</title>
 <meta name="description" content="가고 싶은 여행지를 입력하면 주요 명소를 짧은 영상으로 보여주고, 환율·날씨·항공편·호텔까지 한 번에.">
-<link rel="canonical" href="https://pkh1136.github.io/trip-reels/">
+<!-- canonical 주소는 app.js가 화면(첫 화면 / ?d=여행지)에 맞게 넣음 -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="트립릴스">
 <meta property="og:title" content="트립릴스 · 명소를 영상으로 먼저 여행하세요">
@@ -20,8 +20,9 @@
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<!-- 폰트: 화면에 쓰인 글자 묶음만 받는 dynamic-subset 버전 (일반 버전은 굵기마다 약 750KB) -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
 <link rel="stylesheet" href="style.css">
 <script>
   // 저장된 화면 설정을 그리기 전에 적용 (깜빡임 방지)
@@ -62,7 +63,7 @@
           <input id="q" placeholder="국가, 도시, 명소, 공항코드" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
           <ul class="pop suggest" id="suggest" role="listbox" aria-label="연관 검색어" hidden></ul>
         </div>
-        <div class="field">
+        <div class="field from">
           <label for="from">출발</label>
           <select id="from"><option value="ICN">인천 (ICN)</option><option value="GMP">김포 (GMP)</option></select>
         </div>
@@ -116,10 +117,18 @@
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- 제휴 고지: config.js에 제휴 ID가 들어갈 때만 표시 -->
-<footer class="foot" id="affNote" hidden>
+<footer class="foot">
   <div class="wrap">
-    <p class="aff">📢 이 사이트의 일부 링크(항공·호텔·투어 예약 사이트)는 제휴 링크예요. 링크를 통해 예약하면 트립릴스가 일정 수수료를 받을 수 있으며, 이용자가 내는 가격에는 영향이 없어요.</p>
+    <!-- 제휴 고지: config.js에 제휴 ID가 들어갈 때만 표시 -->
+    <p class="aff" id="affNote" hidden>📢 이 사이트의 일부 링크(항공·호텔·투어 예약 사이트)는 제휴 링크예요. 링크를 통해 예약하면 트립릴스가 일정 수수료를 받을 수 있으며, 이용자가 내는 가격에는 영향이 없어요.</p>
+    <p><b>트립릴스</b> · 여행지 명소를 짧은 영상으로 미리 보고 환율·날씨·항공편·호텔 정보를 한 번에 찾아보는 서비스예요.</p>
+    <p>환율·날씨·비행시간·입국 정보는 참고용이며 실제와 다를 수 있어요. 예약과 출국 전에는 항공사·대사관 등 공식 안내를 꼭 확인하세요.</p>
+    <p>사진·영상 <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener">Wikimedia Commons</a> 기여자 (명소별 작성자·라이선스는 카드를 눌러 크게 보기 화면에 표시)
+      · 날씨 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (CC BY 4.0)
+      · 환율 <a href="https://github.com/fawazahmed0/exchange-api" target="_blank" rel="noopener">Exchange API</a>, <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a>
+      · 지도 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 기여자
+      · 국기 <a href="https://flagpedia.net" target="_blank" rel="noopener">Flagpedia.net</a></p>
+    <details class="credits"><summary>첫 화면 표지 사진 출처</summary><ul id="coverCredits"><li>첫 화면에서 불러와요.</li></ul></details>
   </div>
 </footer>
 
@@ -127,7 +136,7 @@
 <script src="data.js"></script>
 <script src="photos.js"></script>
 <script src="spotinfo.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<!-- 지도 라이브러리(Leaflet)는 일정 지도를 그릴 때 app.js가 불러옴 -->
 <script src="app.js"></script>
 </body>
 </html>

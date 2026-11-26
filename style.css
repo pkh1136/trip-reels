@@ -30,7 +30,9 @@
 
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+body{font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s;word-break:keep-all;overflow-wrap:break-word}
+/* 한글은 단어(띄어쓰기) 단위로 줄바꿈하고, 제목은 줄 길이를 고르게 */
+h1,h2,h3{text-wrap:balance}
 body.noscroll{overflow:hidden}
 a{color:inherit;text-decoration:none}
 button,input,select{font:inherit;color:inherit}
@@ -125,7 +127,7 @@ h1 em{font-style:normal;color:var(--accent)}
 .pax-done{margin-top:12px;width:100%;border:0;background:var(--accent);color:#fff;border-radius:10px;padding:10px;font-weight:700}
 
 /* ---------- 공통 요소 ---------- */
-main{padding:36px 0 90px}
+main{padding:36px 0 48px}
 main:focus{outline:none}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s,transform .1s}
@@ -156,7 +158,11 @@ button.chip:hover{border-color:var(--accent);color:var(--accent-ink)} button.chi
 .region{margin-bottom:18px}
 .region h3{font-size:14px;color:var(--muted);font-weight:600;margin-bottom:8px}
 .carousel{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;scrollbar-width:thin}
+.cover-item{display:flex;scroll-snap-align:start}   /* 목록 항목(listitem) 안에 버튼을 두어 스크린리더가 버튼으로 읽게 */
+.cover-item>.cover{width:100%}
 .cover{position:relative;aspect-ratio:4/5;border:0;border-radius:var(--radius);overflow:hidden;scroll-snap-align:start;text-align:left;background:var(--soft2);box-shadow:var(--shadow);transition:transform .2s}
+.cover .credit{position:absolute;top:12px;right:12px;z-index:1;max-width:60%;font-size:10px;line-height:1.5;color:#ffffffd9;background:#0000005c;border-radius:5px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cover .credit:empty{display:none}
 .cover:hover{transform:translateY(-3px)}
 .cover-img{position:absolute;inset:0;background-size:cover;background-position:center;transition:transform .5s}
 .cover:hover .cover-img{transform:scale(1.05)}
@@ -216,6 +222,9 @@ section.block{scroll-margin-top:72px;margin-top:40px}
 @keyframes flash{0%,60%{box-shadow:0 0 0 4px var(--accent)}100%{box-shadow:var(--shadow)}}
 .media{position:absolute;inset:0;z-index:-2}
 .media video,.media img.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* 영상이 없는 명소: 사진을 천천히 확대·이동(켄 번즈)해서 릴스처럼 보이게 */
+@keyframes kb{from{transform:scale(1.02) translate(0,0)}to{transform:scale(1.14) translate(-2%,-1.5%)}}
+.vcard.is-photo img.poster{animation:kb 18s ease-in-out infinite alternate}
 .vcard::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#0000003d 0%,#0000 22%,#0000 48%,#000000bf 100%);pointer-events:none}
 .skeleton{position:absolute;inset:0;background:linear-gradient(100deg,var(--soft2) 30%,var(--soft) 50%,var(--soft2) 70%);background-size:300% 100%;animation:sh 1.4s infinite}
 @keyframes sh{to{background-position:-150% 0}}
@@ -330,6 +339,10 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .foot p+p{margin-top:6px}
 .foot a{text-decoration:underline;text-underline-offset:2px}
 .foot .aff{color:var(--text);font-weight:600;background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.foot b{color:var(--text)}
+.credits{margin-top:10px}
+.credits summary{cursor:pointer;font-weight:600;color:var(--text);width:max-content}
+.credits ul{list-style:none;margin-top:6px;display:grid;gap:2px}
 
 /* ---------- 방문 정보 · 시간표 일정 · 지도 · 먹거리 ---------- */
 .vcard .meta p.info-line{font-size:12px;color:#ffffffe6;margin-top:4px;-webkit-line-clamp:1}
@@ -359,9 +372,12 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .sub-h{font-size:15px;margin:4px 0 10px}
 
 /* ---------- 릴스 뷰어 ---------- */
-.viewer{position:fixed;inset:0;z-index:60;background:#05070cf2;display:grid;grid-template-columns:1fr minmax(280px,360px);color:#fff}
+.viewer{position:fixed;inset:0;z-index:60;background:#05070c;display:grid;grid-template-columns:1fr minmax(280px,360px);color:#fff}
+body.noscroll .fab{display:none}   /* 뷰어가 열려 있으면 플로팅 버튼 숨김 */
 .v-stage{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#000;touch-action:pan-y}
 .v-stage video,.v-stage img{max-width:100%;max-height:100vh;width:100%;height:100%;object-fit:contain}
+@keyframes kb-v{from{transform:scale(1)}to{transform:scale(1.12) translate(-1.5%,-1%)}}
+.v-stage img.kb{animation:kb-v 8s ease-out forwards}
 .v-stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
 .v-progress{position:absolute;left:0;right:0;top:0;height:3px;background:#ffffff26}
 .v-progress i{display:block;height:100%;width:0;background:var(--accent)}
@@ -381,7 +397,8 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .v-close{position:absolute;top:14px;right:16px;width:42px;height:42px;border-radius:50%;border:0;background:#ffffff26;color:#fff;font-size:26px;line-height:1}
 
 /* ---------- 플로팅 버튼 ---------- */
-.fab{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:40;display:flex;gap:8px;align-items:center}
+.fab{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:40;display:flex;gap:8px;align-items:center;transition:transform .25s,opacity .25s}
+.fab.away{transform:translateY(calc(100% + 24px));opacity:0;pointer-events:none}   /* 아래로 스크롤하는 동안 숨김 */
 .fab-btn{border:0;background:var(--text);color:var(--bg);border-radius:999px;height:46px;padding:0 18px;font-weight:700;font-size:14.5px;box-shadow:var(--shadow-lg);transition:transform .12s}
 .fab-btn:active{transform:scale(.95)}
 .fab-btn.round{width:46px;padding:0;font-size:18px;background:var(--card);color:var(--text);border:1px solid var(--line)}
@@ -401,8 +418,19 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 }
 @media (max-width:640px){
   .wrap{padding:0 16px}
-  .topbar{margin-bottom:26px}
-  .sub{font-size:15px}
+  /* 모바일 첫 화면: 여백을 줄여 아래 여행지 사진이 더 빨리 보이게 */
+  .hero .wrap{padding-top:14px;padding-bottom:22px}
+  .topbar{margin-bottom:18px}
+  h1{font-size:clamp(24px,6.9vw,30px)}
+  .sub{font-size:14.5px;margin-top:8px}
+  .search{margin-top:18px}
+  /* 검색 칸: 날짜는 한 줄 전체를 써서 '12.26(토) – 12.30(수) 4박'이 잘리지 않게 */
+  .fields{grid-template-areas:"dest dest" "from pax" "date date" "go go"}
+  .field.dest{grid-area:dest} .field.from{grid-area:from} .field.pax{grid-area:pax} .field.date{grid-area:date} .go{grid-area:go}
+  .field{padding:6px 12px;cursor:pointer}
+  .field input,.field select,.field-btn{min-height:32px}
+  .go{padding:12px}
+  main{padding-top:28px}
   /* 모바일: 달력·인원은 화면 아래에서 올라오는 시트 */
   .cal,.paxpop{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;max-height:85vh;overflow:auto;border-radius:22px 22px 0 0;padding:18px 18px max(18px,env(safe-area-inset-bottom));z-index:70;box-shadow:0 -10px 40px #1b233340;animation:sheet .22s ease-out}
   @keyframes sheet{from{transform:translateY(40px);opacity:.5}}
@@ -411,7 +439,12 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
   .cal-month{flex:1}
   .day{height:42px}
   .dest-head h2{font-size:26px}
-  .facts{grid-template-columns:1fr 1fr}
+  /* 입국·환율·날씨 등 정보 타일은 옆으로 넘기는 한 줄로 → 명소 영상 카드가 첫 화면에 보이게 */
+  .facts{display:flex;overflow-x:auto;scroll-snap-type:x proximity;margin:0 -16px;padding:0 16px 6px;scroll-padding:16px;scrollbar-width:none}
+  .facts::-webkit-scrollbar{display:none}
+  .fact{flex:0 0 auto;min-width:140px;max-width:220px;scroll-snap-align:start}
+  .tabs{margin-top:10px}
+  section.block{margin-top:28px}
   /* 모바일: 명소 카드를 옆으로 넘기는 릴스형 */
   .grid{display:grid;grid-auto-flow:column;grid-auto-columns:72%;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:10px;margin:0 -16px;padding-left:16px;padding-right:16px;scroll-padding:16px;scrollbar-width:none}
   .grid .vcard{scroll-snap-align:start}

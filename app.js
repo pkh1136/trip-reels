@@ -36,6 +36,7 @@ const fmtD = s => { const d = parseD(s); return `${d.getMonth() + 1}.${d.getDate
 const ymd = s => s.replace(/-/g, '');
 const yymmdd = s => s.slice(2).replace(/-/g, '');
 const dday = s => Math.round((parseD(s) - parseD(today())) / 864e5);
+const clock = m => { const r = Math.round(m / 10) * 10; return `${pad(Math.floor(r / 60) % 24)}:${pad(r % 60)}`; };   // 일정 시각은 10분 단위로 표시
 
 /* =========================================================
    데이터 가공
@@ -218,6 +219,9 @@ function renderPax() {
   }).join('') + `<button type="button" class="pax-done">완료</button>`;
 }
 $('#paxBtn').addEventListener('click', () => { if ($('#paxPop').hidden) { renderPax(); openPop('paxPop'); } else $('#paxPop').hidden = true; });
+// 날짜·인원 칸의 빈 곳(칸 제목 포함)을 눌러도 열리게 → 모바일 터치 영역 확대
+// (달력·인원 창은 누를 때마다 다시 그려져 e.target이 떨어져 나가므로, 클릭 당시의 경로(composedPath)로 판단)
+$$('.field.date, .field.pax').forEach(f => f.addEventListener('click', e => { if (!e.composedPath().some(n => n.matches?.('.field-btn, .pop'))) $('.field-btn', f).click(); }));
 $('#paxPop').addEventListener('click', e => {
   if (e.target.closest('.pax-done')) { $('#paxPop').hidden = true; return; }
   const b = e.target.closest('[data-k]'); if (!b) return;
@@ -325,7 +329,7 @@ function cached(key, fn) {
 }
 // 여행 영상이 아닌 것 제외: 위성·관측 영상, 지도·3D 렌더링, 행사·정치 영상, 1960년대 이전 흑백 필름
 const NOT_TRAVEL = /\b(cira|goes-?\d*|nasa|noaa|landsat|sentinel|modis|copernicus|satellite|skysat|from space|iss\b|radar|himawari|simulation|lecture|interview|press conference|state dinner|president|minister|potus|map|maps|3d|render(ing)?|animation|orbit|peakvisor|peak ?names|path names|newsreel|footage)\b/i;
-const OLD_FILM = /\b(18[89]\d|19[0-6]\d)\b/;
+const OLD_FILM = /\b(18[89]\d|19[0-7]\d)\b/;   // 1970년대 이전 기록 영상 (예: 'The Nixons in Guam … (1972)')
 const words = t => fold(t).split(/[\s-]+/).filter(w => w.length > 3);
 function fetchVideos(term, limit = 8) {
   return cached(`v2:${term}|${limit}`, async () => {
@@ -381,6 +385,42 @@ function pinnedVideos(files) {
     });
   });
 }
+// 한글 지명 → 영문 지명 (한국어 위키백과 문서의 영어판 제목). 예: 괌 → Guam, 시엠립 → Siem Reap
+function enName(q) {
+  if (!hasKo(q)) return Promise.resolve(null);
+  return cached('en:' + q, async () => {
+    const j = await (await fetch('https://ko.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&redirects=1&prop=langlinks&lllang=en&titles=' + enc(q))).json();
+    return j.query?.pages?.[0]?.langlinks?.[0]?.title?.replace(/\s*\(.*\)$/, '') || null;
+  });
+}
+
+/* ---------- 사진·영상 출처 (작성자 · 라이선스) ---------- */
+// Wikimedia 파일 설명 페이지에서 작성자·라이선스를 가져옴. 여러 파일을 한 번에 묻고 7일간 캐시
+const textOf = html => new DOMParser().parseFromString(String(html || ''), 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
+const fileOf = page => { const m = String(page || '').match(/\/wiki\/File:([^?#]+)/); return m ? decodeURIComponent(m[1]) : null; };
+async function fileCredits(files) {
+  const out = {}, need = [];
+  [...new Set(files.filter(Boolean))].forEach(f => {
+    const hit = store.get('c:cr:' + f);
+    if (hit && Date.now() - hit.t < CACHE_DAYS * 864e5) out[f] = hit.v; else need.push(f);
+  });
+  for (let i = 0; i < need.length; i += 50) {
+    const chunk = need.slice(i, i + 50);
+    try {
+      const j = await (await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&prop=imageinfo&iiprop=url|extmetadata&iiextmetadatafilter=Artist|LicenseShortName&titles='
+        + enc(chunk.map(f => 'File:' + f).join('|')))).json();
+      const back = {}; (j.query?.normalized || []).forEach(n => back[n.to] = n.from);   // API가 바꾼 제목(_ → 공백) → 원래 파일명
+      (j.query?.pages || []).forEach(pg => {
+        const info = pg.imageinfo?.[0]; if (!info) return;
+        const f = (back[pg.title] || pg.title).replace(/^File:/, ''), m = info.extmetadata || {}, a = textOf(m.Artist?.value);
+        const v = { a: a ? (a.length > 40 ? a.slice(0, 39) + '…' : a) : '작성자 정보 없음', l: m.LicenseShortName?.value || '라이선스 확인 필요',
+                    u: info.descriptionurl || 'https://commons.wikimedia.org/wiki/File:' + enc(f) };
+        out[f] = v; store.set('c:cr:' + f, { t: Date.now(), v });
+      });
+    } catch {}
+  }
+  return out;
+}
 const hasVideo = s => !!(s.preset || SPOT_VIDEO[s.en]);
 async function spotVideos(s) {
   if (s.preset) return s.preset;
@@ -417,11 +457,22 @@ function setURL(push) {
   u.search = current ? (current.custom ? `?q=${enc(current.ko)}` : `?d=${current.slug}${curAp && curAp !== current.aps[0] ? '&ap=' + curAp.code : ''}`) : '';
   history[push ? 'pushState' : 'replaceState'](null, '', u);
 }
+// 검색엔진용 대표 주소(canonical): 첫 화면은 사이트 주소, 여행지는 ?d=여행지
+const SITE = new URL('./', location.href).href;   // 예: https://…/trip-reels/
+function setCanonical(path) {
+  let l = $('link[rel="canonical"]');
+  if (!l) { l = document.createElement('link'); l.rel = 'canonical'; document.head.append(l); }
+  l.href = SITE + path;
+}
+// 공유 주소: 국가 페이지(/japan/)로 공유해야 카카오톡 등에서 여행지별 제목·설명 미리보기가 보임 (tools/build-pages.cjs가 만든 페이지)
+const shareURL = () => current && !current.custom && current.info.slug
+  ? `${SITE}${current.info.slug}/${curAp && curAp !== current.aps[0] ? '#ap=' + curAp.code : ''}` : location.href;
 function route() {
   const p = new URLSearchParams(location.search);
   const legacy = decodeURIComponent(location.hash.slice(1));   // 예전 주소(#일본) 호환
   const d = p.get('d') && (destBySlug(p.get('d')) || findDest(p.get('d')));
-  if (d) return render(d, null, { push: false, ap: p.get('ap') });
+  const ap = p.get('ap') || new URLSearchParams(location.hash.slice(1)).get('ap');   // 국가 페이지(/japan/#ap=KIX)에서 넘어온 공항
+  if (d) return render(d, null, { push: false, ap });
   if (p.get('q')) return render(p.get('q'), null, { push: false });
   if (legacy && !['main', 'top'].includes(legacy) && !legacy.startsWith('sec-')) return render(legacy, null, { push: false });
   renderHome();
@@ -435,6 +486,7 @@ const chip = (d, hot) => `<button type="button" class="chip" data-go="${d.ko}">$
 function renderHome() {
   current = null; curAp = null; stopVideos();
   document.title = '트립릴스 · 여행지 영상 미리보기';
+  setCanonical('');
   const m = new Date().getMonth() + 1;
   const trip = store.get('trip'), recent = store.get('recent', []).map(destByKo).filter(Boolean);
   const saved = getSaved();
@@ -447,11 +499,11 @@ function renderHome() {
   if (saved.length) html += savedSection();
 
   html += `<section class="home-sec"><h2 class="sec-h">🔥 지금 인기 여행지</h2>
-    <div class="carousel" role="list">${POPULAR.map(destByKo).map(d => `
-      <button type="button" class="cover" role="listitem" data-go="${d.ko}">
-        <img class="cover-img" src="${photoUrl(COVER_IMG[d.ko] || SPOT_IMG[spotsFor(d, d.aps[0])[0].en], 640)}" alt="" loading="lazy" decoding="async"><span class="hot">HOT</span>
+    <div class="carousel" role="list">${POPULAR.map(destByKo).map(d => { const file = COVER_IMG[d.ko] || SPOT_IMG[spotsFor(d, d.aps[0])[0].en]; return `
+      <div class="cover-item" role="listitem"><button type="button" class="cover" data-go="${d.ko}" data-file="${esc(file || '')}">
+        <img class="cover-img" src="${photoUrl(file, 640)}" alt="" loading="lazy" decoding="async"><span class="hot">HOT</span><small class="credit" aria-hidden="true"></small>
         <span class="cover-txt"><b>${d.flagImg}${d.ko}</b><small>${esc(d.tagline)}</small><em>✈ ${esc(d.aps[0].time)}</em></span>
-      </button>`).join('')}</div></section>`;
+      </button></div>`; }).join('')}</div></section>`;
 
   html += `<section class="home-sec"><h2 class="sec-h">📅 ${m}월에 가기 좋은 곳</h2><div class="chips">${goodNow.map(d => chip(d)).join('')}</div></section>
     <section class="home-sec"><h2 class="sec-h">🛂 무비자 + 비행 5시간 이내</h2><div class="chips">${easy.map(d =>
@@ -462,6 +514,17 @@ function renderHome() {
 
   $('#main').innerHTML = html;
   bindTripCard();
+  showCoverCredits();
+}
+// 첫 화면 표지 사진 출처: 카드 모서리에 작성자·라이선스, 푸터에 원본 링크 목록
+async function showCoverCredits() {
+  const covers = $$('.cover[data-file]').filter(b => b.dataset.file);
+  if (!covers.length) return;
+  const cr = await fileCredits(covers.map(b => b.dataset.file));
+  covers.forEach(b => { const c = cr[b.dataset.file]; if (c) $('.credit', b).textContent = `${c.a} · ${c.l}`; });
+  const list = covers.map(b => { const c = cr[b.dataset.file];
+    return c ? `<li>${esc(b.dataset.go)} · <a href="${esc(c.u)}" target="_blank" rel="noopener">${esc(c.a)}</a> · ${esc(c.l)}</li>` : ''; }).join('');
+  if (list) $('#coverCredits').innerHTML = list;
 }
 function savedSection() {
   const groups = {};
@@ -509,6 +572,7 @@ function render(q, word, opts = {}) {
   const c = current, I = c.info, m = new Date().getMonth() + 1;
   setURL(opts.push !== false);
   document.title = `${c.ko} 여행 · 트립릴스`;
+  setCanonical(c.custom ? '' : '?d=' + c.slug);
   if (!$('#q').value || opts.push === false) $('#q').value = c.ko;
   const trip = store.get('trip');
   const isTrip = trip && trip.ko === c.ko;
@@ -564,7 +628,7 @@ function saveTrip() {
   toast(`${t.city} 여행을 저장했어요 · 첫 화면에서 D-${Math.max(0, dday(t.d1))}와 체크리스트를 볼 수 있어요`);
 }
 async function share() {
-  const url = location.href, title = `${current.ko} 여행 · 트립릴스`;
+  const url = shareURL(), title = `${current.ko} 여행 · 트립릴스`;
   try {
     if (navigator.share) return await navigator.share({ title, text: `${current.ko} 명소를 영상으로 미리 보기`, url });
     await navigator.clipboard.writeText(url); toast('링크를 복사했어요');
@@ -581,11 +645,15 @@ async function renderSpots(focusSpot) {
   if ($('#spotCity')) $('#spotCity').textContent = c.custom ? c.ko : cityOf(curAp);
   if (!spots) {   // 데이터에 없는 여행지: Commons에서 직접 검색
     grid.innerHTML = '<div class="state">🔎 영상을 찾는 중…</div>';
-    let vids = [];
-    try { vids = (await withTimeout(fetchVideos(c.ko, 12), 12000)).filter(v => fold(v.title).includes(fold(c.ko))); } catch {}   // 제목에 검색어가 있는 영상만
+    let vids = [], term = c.ko;
+    try {
+      // Commons 파일 이름은 대부분 영어라, 한글 지명은 영문 지명으로 바꿔 검색 (예: 괌 → Guam)
+      term = (await withTimeout(enName(c.ko), 5000).catch(() => null)) || c.ko;
+      vids = (await withTimeout(fetchVideos(term, 12), 12000)).filter(v => fold(v.title).includes(fold(term)));   // 제목에 검색어가 있는 영상만
+    } catch {}
     if (current !== c) return;
     if (!vids.length) {
-      grid.innerHTML = `<div class="state"><b>🧭</b><p>'${esc(c.ko)}' 영상을 찾지 못했어요.</p>
+      grid.innerHTML = `<div class="state"><b>🧭</b><p>'${esc(c.ko)}${term !== c.ko ? ` (${esc(term)})` : ''}' 영상을 찾지 못했어요.</p>
         <p class="muted">영문 지명(예: Bali, Prague)으로 검색하거나 YouTube에서 찾아보세요.</p>
         <a class="btn" href="${ytLink(c.ko)}" target="_blank" rel="noopener">▶ YouTube 쇼츠에서 보기</a></div>`;
       $('#reelsBtn').hidden = true; return;
@@ -675,7 +743,7 @@ async function loadCard(el) {
   }
 }
 function setVideo(el, idx) {
-  const v = el._vids[idx]; el._idx = idx; el._state = 'video';
+  const v = el._vids[idx]; el._idx = idx; el._state = 'video'; el.classList.remove('is-photo');
   const media = $('.media', el);
   $('video', media)?.remove(); $('.placeholder', media)?.remove();
   if (!el._img && !$('.skeleton', media)) media.insertAdjacentHTML('afterbegin', '<div class="skeleton"></div>');
@@ -700,40 +768,45 @@ function cycle(el) {
   setVideo(el, (el._idx + 1) % el._vids.length);
 }
 function setPhoto(el, src, failed) {
-  el._state = failed ? 'error' : 'photo'; el._v = null;
+  el._state = failed ? 'error' : 'photo'; el._v = null; el.classList.add('is-photo');   // 사진은 천천히 확대(켄 번즈)
   $('video', $('.media', el))?.remove();
   showPhoto(el, src);
   setBadge(el, failed ? '사진 · 영상 연결 실패' : '사진 · 영상은 쇼츠에서', 'photo');
   if (failed && !$('.retry', el)) $('.media', el).insertAdjacentHTML('beforeend', '<button type="button" class="retry floating">영상 다시 시도</button>');
 }
 function setPlaceholder(el) {
-  el._state = 'none'; el._v = null; el._img = null;
+  el._state = 'none'; el._v = null; el._img = null; el.classList.remove('is-photo');
   $('.media', el).innerHTML = `<div class="placeholder" aria-hidden="true">🏞</div>`;
   setBadge(el, '영상 준비 중 · 쇼츠에서 보기', 'photo');
 }
 function setError(el) {
-  el._state = 'error';
+  el._state = 'error'; el.classList.remove('is-photo');
   $('.media', el).innerHTML = `<div class="placeholder err"><span aria-hidden="true">⚠️</span><p>불러오지 못했어요</p><button type="button" class="retry">다시 시도</button></div>`;
   setBadge(el, '연결 실패', 'photo');
 }
 function stopVideos() { $$('.vcard video').forEach(v => v.pause()); }
 
 /* ---------- 릴스 뷰어 (스와이프 · 방향키 · 자동 넘기기) ---------- */
-let vIdx = 0, vTimer = null;
+let vIdx = 0, vTimer = null, vOrder = [];   // vOrder: 뷰어에서 보여줄 카드 순서 (카드 번호 목록), vIdx: 그 안의 위치
 const vCards = () => $$('#grid .vcard');
+const vCard = () => vCards()[vOrder[vIdx]];
+const likelyVideo = el => el._state ? el._state === 'video' || (el._state === 'loading' && hasVideo(el._spot)) : hasVideo(el._spot);
 async function openViewer(i, auto) {
   const cards = vCards(); if (!cards.length) return;
   stopVideos();
+  // '릴스로 몰아보기'는 영상이 있는 명소부터 보여주고 사진만 있는 명소는 뒤로. 카드를 눌러 열면 카드 순서 그대로
+  const all = cards.map((_, k) => k);
+  vOrder = auto ? [...all.filter(k => likelyVideo(cards[k])), ...all.filter(k => !likelyVideo(cards[k]))] : all;
   $('#viewer').hidden = false; document.body.classList.add('noscroll');
   $('#vAuto').checked = auto || store.get('autoReels', false);
-  showViewer(i);
+  showViewer(auto ? 0 : Math.max(0, vOrder.indexOf(i)));
   $('#vClose').focus();
 }
 async function showViewer(i) {
-  const cards = vCards(); vIdx = (i + cards.length) % cards.length;
-  const el = cards[vIdx], s = el._spot, vid = $('#vVid'), img = $('#vImg');
+  const cards = vCards(), n = vOrder.length; vIdx = (i + n) % n;
+  const el = cards[vOrder[vIdx]], s = el._spot, vid = $('#vVid'), img = $('#vImg');
   clearTimeout(vTimer); $('#vBar').style.transition = 'none'; $('#vBar').style.width = '0';
-  $('#vCount').textContent = `${vIdx + 1} / ${cards.length}`;
+  $('#vCount').textContent = `${vIdx + 1} / ${n}`;
   $('#vTitle').textContent = s.ko; $('#vDesc').textContent = s.d || '';
   const vm = s.en && SPOT_META[s.en] ? spotMeta(s) : null;
   $('#vMeta').textContent = vm ? `🕐 ${vm.slot} 추천 · 머무는 시간 약 ${vm.stay}시간 · ${vm.fee}${vm.note ? ' · ' + vm.note : ''}` : '';
@@ -747,23 +820,38 @@ async function showViewer(i) {
     $('#vCredit').textContent = '불러오는 중…'; vid.pause(); vid.hidden = true; img.hidden = true;
     if (!el._state) loadCard(el);
     for (let t = 0; el._state === 'loading' && t < 90; t++) await sleep(200);   // 카드 로딩이 끝날 때까지 대기
-    if (vIdx !== +el.dataset.i || $('#viewer').hidden) return;
+    if (vCard() !== el || $('#viewer').hidden) return;
   }
   const v = el._vids?.[el._idx];
-  vid.pause();
+  const file = !v && el._img && s.en ? SPOT_IMG[s.en] : null;   // 사진의 Wikimedia 파일명 (photos.js)
+  vid.pause(); img.classList.remove('kb');
   if (v) {
     img.hidden = true; vid.hidden = false;
     vid.poster = el._img || ''; vid.src = v.hd; vid.loop = !$('#vAuto').checked; vid.controls = true; vid.muted = false;
     vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
-    $('#vSrc').hidden = false; $('#vSrc').href = v.page;
-    $('#vCredit').textContent = `${v.title} · Wikimedia Commons`;
   } else {
     vid.removeAttribute('src'); vid.load(); vid.hidden = true;
     img.hidden = !el._img; img.src = el._img || ''; img.alt = s.ko;
-    $('#vSrc').hidden = true;
-    $('#vCredit').textContent = el._img ? '사진 · Wikipedia' : '이 명소는 아직 영상이 없어요 · 쇼츠에서 보기';
+    if (el._img) { void img.offsetWidth; img.classList.add('kb'); }   // 사진은 천천히 확대(켄 번즈)
+    if (file) {   // 카드용 작은 사진을 먼저 보여주고, 큰 화면용 고해상도 사진이 준비되면 교체
+      const hd = new Image(); hd.src = photoUrl(file, 1280);
+      hd.onload = () => { if (vCard() === el && !$('#viewer').hidden && img.src === el._img) img.src = hd.src; };
+    }
   }
+  showCredit(el, v, file);
   armAuto();
+}
+// 출처 표시: 작성자 · 라이선스 · 원본(파일 설명 페이지) 링크
+function showCredit(el, v, file) {
+  const kind = v ? '영상' : '사진', f = v ? fileOf(v.page) : file;
+  $('#vSrc').hidden = !f; $('#vSrc').href = v ? v.page : f ? 'https://commons.wikimedia.org/wiki/File:' + enc(f) : '';
+  $('#vCredit').textContent = v ? `영상 · ${v.title} · Wikimedia Commons` : el._img ? '사진 · Wikimedia Commons' : '이 명소는 아직 영상이 없어요 · 쇼츠에서 보기';
+  if (!f) return;
+  fileCredits([f]).then(cr => {
+    const c = cr[f]; if (!c || vCard() !== el || $('#viewer').hidden) return;
+    $('#vCredit').textContent = `${kind} · ${c.a} · ${c.l} · Wikimedia Commons`;
+    $('#vSrc').href = c.u;
+  });
 }
 function armAuto() {
   clearTimeout(vTimer);
@@ -782,18 +870,18 @@ function closeViewer() {
   const vid = $('#vVid'); vid.pause(); vid.removeAttribute('src'); vid.load();
   $('#vMap').removeAttribute('src');
   $('#viewer').hidden = true; document.body.classList.remove('noscroll');
-  vCards()[vIdx]?.focus();
+  vCard()?.focus();
 }
 $('#vClose').addEventListener('click', closeViewer);
 $('#vPrev').addEventListener('click', () => showViewer(vIdx - 1));
 $('#vNext').addEventListener('click', () => showViewer(vIdx + 1));
 $('#vHeart').addEventListener('click', () => {
-  const el = vCards()[vIdx], on = toggleSaved(current.ko, el._spot.ko);
+  const el = vCard(), on = toggleSaved(current.ko, el._spot.ko);
   $('#vHeart').textContent = on ? '♥ 저장됨' : '♡ 저장'; $('#vHeart').setAttribute('aria-pressed', on);
   const h = $('.heart', el); h?.classList.toggle('on', on); renderPlan();
 });
 $('#vMapBtn').addEventListener('click', () => {
-  const m = $('#vMap'), s = vCards()[vIdx]._spot, open = m.hidden;
+  const m = $('#vMap'), s = vCard()._spot, open = m.hidden;
   if (open) { m.src = `https://maps.google.com/maps?q=${enc(s.en)}&z=13&output=embed`; clearTimeout(vTimer); $('#vVid').pause(); }
   m.hidden = !open; $('#vMapBtn').setAttribute('aria-pressed', open);
   if (!open) { $('#vVid').play().catch(() => {}); armAuto(); }
@@ -999,6 +1087,15 @@ function renderPlan() {
     }
     plan[days - 1].list = takeNear(1);
   }
+  // 밤(야간) 명소 두 곳이 같은 날 몰리면 밤늦게 끝나므로, 야간 명소가 없는 다른 시내 일정의 낮 명소와 하나를 맞바꿈
+  const isLate = s => spotMeta(s).slot === '야간';
+  const cityDays = plan.filter((p, i) => i > 0 && i < days - 1 && !p.g);
+  cityDays.forEach(a => {
+    const late = a.list.filter(isLate); if (late.length < 2) return;
+    const b = cityDays.find(x => x !== a && !x.list.some(isLate) && x.list.some(s => spotMeta(s).stay < 6)); if (!b) return;
+    const ai = a.list.indexOf(late.at(-1)), bi = b.list.findLastIndex(s => spotMeta(s).stay < 6);
+    [a.list[ai], b.list[bi]] = [b.list[bi], a.list[ai]];
+  });
   const restNear = near.slice(ni), restFar = groups.slice(gi);
   const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n || city;
   const dayLabel = i => { if (S.trip === 'oneway') return `${i + 1}일차`; const d = parseD(addDays(S.d1, i)); return `${i + 1}일차 · ${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
@@ -1011,9 +1108,10 @@ function renderPlan() {
   const nextFood = () => foods.length ? foods[foodIdx++ % foods.length] : null;
   const timeline = plan.map((p, i) => {
     const rows = [], first = i === 0, isLast = leave(i);
-    let t = first ? 15 * 60 : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first, dinner = false;
+    // 첫날: 14시 도착 후 입국 심사·숙소 이동·체크인에 약 2시간 → 16시부터 일정
+    let t = first ? 16 * 60 : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first, dinner = false;
     const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? '🍜 점심' : '🍽 저녁'}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
-    if (first) rows.push({ kind: 'note', time: 14 * 60, text: `✈ ${curAp.name} 도착 · ${area} 숙소 체크인` });
+    if (first) rows.push({ kind: 'note', time: 14 * 60, text: `✈ ${curAp.name} 도착 · 입국 심사 후 ${area} 숙소 체크인` });
     if (p.g) rows.push({ kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` });
     const items = [...p.list].sort((a, b) => SLOT_ORDER[spotMeta(a).slot] - SLOT_ORDER[spotMeta(b).slot]);
     items.forEach(s => {
@@ -1049,7 +1147,7 @@ function renderPlan() {
     if (isLast) rows.push({ kind: 'note', time: Math.max(t, 11 * 60), text: `✈ ${curAp.name}(으)로 이동 · 출국` });
     return { ...p, rows };
   });
-  const hm = m => `${pad(Math.floor(m / 60) % 24)}:${pad(Math.round(m % 60))}`;
+  const hm = clock;
   const nearMap = s => mapLink('restaurants near ' + (s?.en || curAp.en));
   const text = timeline.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}]\n` + p.rows.filter(r => r.kind !== 'move').map(r =>
     `${r.time != null ? hm(r.time) + ' ' : ''}${r.spot ? r.spot.ko : r.text}`).join('\n')).join('\n\n');
@@ -1075,7 +1173,7 @@ function renderPlan() {
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
       <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 Google 지도로 보기</a></div>`;
   $('#planCopy').addEventListener('click', async () => {
-    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${location.href}`;
+    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${shareURL()}`;
     try { await navigator.clipboard.writeText(t); toast('일정을 복사했어요'); } catch { prompt('아래 내용을 복사하세요', t); }
   });
   drawPlanMap(timeline, center);
@@ -1083,20 +1181,37 @@ function renderPlan() {
 
 /* ---------- 일정 지도 (Leaflet + OpenStreetMap) ---------- */
 const DAY_COLORS = ['#ff6b4a', '#2f80ed', '#12a150', '#a855f7', '#f59e0b', '#0ea5e9', '#e11d48', '#64748b', '#14b8a6', '#8b5cf6'];
-let planMap = null;
+let planMap = null, leafletP = null;
+// 지도 라이브러리(Leaflet)는 일정 지도를 처음 그릴 때만 불러옴 → 첫 화면이 가벼워짐
+function loadLeaflet() {
+  if (typeof L !== 'undefined') return Promise.resolve();
+  return leafletP ||= Promise.all([
+    ['link', { rel: 'stylesheet', href: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' }],
+    ['script', { src: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' }]
+  ].map(([tag, attrs]) => new Promise((ok, fail) => {
+    const el = Object.assign(document.createElement(tag), attrs);
+    el.onload = ok; el.onerror = () => { el.remove(); fail(new Error('leaflet')); };
+    document.head.append(el);
+  }))).catch(e => { leafletP = null; throw e; });
+}
 function drawPlanMap(timeline, center) {
   const wrap = $('#planMapWrap');
-  if (typeof L === 'undefined' || !center) { wrap.hidden = true; return; }   // 지도 라이브러리를 못 불러오면 숨김
+  if (!center) { wrap.hidden = true; return; }
+  loadLeaflet().then(() => { if (wrap.isConnected) paintPlanMap(timeline, center); },
+                     () => { wrap.hidden = true; });   // 지도 라이브러리를 못 불러오면 숨김
+}
+function paintPlanMap(timeline, center) {
   planMap?.remove();
   planMap = L.map('planMap', { scrollWheelZoom: false, attributionControl: true });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(planMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 기여자' }).addTo(planMap);
   const layers = timeline.map((p, i) => {
     const color = DAY_COLORS[i % DAY_COLORS.length], pts = [];
     const group = L.layerGroup();
     p.rows.filter(r => r.spot && spotGeo(r.spot)).forEach((r, k) => {
       const ll = spotGeo(r.spot); pts.push(ll);
       L.marker(ll, { icon: L.divIcon({ className: 'pin', html: `<span style="background:${color}">${i + 1}-${k + 1}</span>`, iconSize: [34, 22], iconAnchor: [17, 11] }) })
-        .bindPopup(`<b>${esc(r.spot.ko)}</b><br>${i + 1}일차 ${pad(Math.floor(r.time / 60))}:${pad(r.time % 60)} · ${r.m.stay}시간`).addTo(group);
+        .bindPopup(`<b>${esc(r.spot.ko)}</b><br>${i + 1}일차 ${clock(r.time)} · ${r.m.stay}시간`).addTo(group);
     });
     if (pts.length > 1) L.polyline(pts, { color, weight: 3, opacity: .8, dashArray: p.g ? '6 6' : null }).addTo(group);
     return { group, pts };
@@ -1274,6 +1389,12 @@ $('#fsBtn').setAttribute('aria-pressed', document.documentElement.dataset.fs ===
 // 검색창이 화면 밖으로 나가면 하단 검색·맨 위로 버튼 표시
 new IntersectionObserver(([en]) => { $('#fabSearch').hidden = en.isIntersecting; $('#fabTop').hidden = en.isIntersecting; }).observe($('#searchForm'));
 $('#fabTop').addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+// 아래로 스크롤하는 동안은 플로팅 버튼을 숨겨 카드 내용을 가리지 않게 (위로 올리면 다시 표시)
+let lastY = scrollY;
+addEventListener('scroll', () => {
+  const y = scrollY, dy = y - lastY; if (Math.abs(dy) < 8) return;
+  $('.fab').classList.toggle('away', dy > 0); lastY = y;
+}, { passive: true });
 $('#fabSearch').addEventListener('click', () => { scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('#q').focus(), 350); });
 
 /* =========================================================

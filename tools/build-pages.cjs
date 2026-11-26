@@ -1,4 +1,5 @@
 // 국가별 공유용 페이지 생성: /japan/ 처럼 주소를 열면 미리보기(OG 태그)가 보이고 본 화면(?d=japan)으로 이동
+// 검색엔진용 sitemap.xml(첫 화면 + 국가별 ?d= 주소)도 함께 만듦 → Google Search Console에 sitemap.xml 주소를 제출
 // 실행: node tools/build-pages.cjs   (data.js를 고친 뒤 다시 실행)
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
@@ -8,8 +9,10 @@ vm.runInContext(fs.readFileSync(path.join(root, 'data.js'), 'utf8') + ';this.DES
 const BASE = 'https://pkh1136.github.io/trip-reels/';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let n = 0;
+const slugs = [];
 for (const d of ctx.DESTS) {
   const slug = ctx.INFO[d.ko]?.slug; if (!slug) continue;
+  slugs.push(slug);
   const title = `${d.ko} 여행 · 트립릴스`;
   const desc = `${d.tagline} — ${d.spots.slice(0, 4).map(s => s.ko).join(', ')} 영상과 환율·날씨·항공편·호텔 정보`;
   const target = `../?d=${slug}`;
@@ -33,4 +36,10 @@ for (const d of ctx.DESTS) {
   fs.writeFileSync(path.join(root, slug, 'index.html'), html);
   n++;
 }
-console.log(`${n}개 국가 페이지 생성`);
+const urls = [BASE, ...slugs.map(s => `${BASE}?d=${s}`)];
+fs.writeFileSync(path.join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}
+</urlset>
+`);
+console.log(`${n}개 국가 페이지 · sitemap.xml 생성`);
