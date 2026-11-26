@@ -333,26 +333,28 @@ function wikiImage(term) {
     return pg?.thumbnail?.source || null;
   });
 }
-// 제목에 명소 이름이 없는 영상(엉뚱한 검색 결과)은 제외
-const UNIQUE = new Set("trevi colosseum eiffel louvre matterhorn jungfraujoch lauterbrunnen chillon stonehenge alhambra sagrada acropolis meteora mykonos cappadocia pamukkale bosphorus uluru banff borobudur komodo tegallalang uluwatu zhangjiajie jiufen taroko shilin merlion sentosa kinkaku dotonbori fushimi ayutthaya karnak kawasan boracay niagara versailles cesky guell amalfi giza buckingham hagia santorini shibuya".split(' '));
-const termWords = s => fold(s.en).split(/[\s,-]+/).filter(w => w.length >= 3 && !['the', 'and'].includes(w));
-function relevant(s, title) {
-  const t = fold(title);
-  if (s.k) return t.includes(s.k);
-  const ws = termWords(s);
-  if (ws.some(w => UNIQUE.has(w) && t.includes(w))) return true;
-  return ws.filter(w => t.includes(w)).length >= Math.min(2, ws.length);
+// 명소 영상은 직접 확인해서 고정한 파일(photos.js의 SPOT_VIDEO)만 사용 → 엉뚱한 검색 결과가 섞이지 않음
+// 고정 영상이 없는 명소는 대표 사진으로 보여줌
+function pinnedVideos(files) {
+  return cached('pv:' + files.join('|'), async () => {
+    const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=videoinfo&viprop=url|size|derivatives'
+      + '&titles=' + enc(files.map(f => 'File:' + f).join('|'));
+    const j = await (await fetch(url)).json();
+    const byTitle = {};
+    Object.values(j.query?.pages || {}).forEach(pg => { if (pg.videoinfo) byTitle[pg.title.replace(/^File:/, '').replace(/ /g, '_')] = pg; });
+    return files.map(f => byTitle[f.replace(/ /g, '_')]).filter(Boolean).map(pg => {
+      const v = pg.videoinfo[0], ders = (v.derivatives || []).filter(x => /webm|mp4/.test(x.type));
+      const pick = h => ders.find(x => x.transcodekey && x.transcodekey.startsWith(h));
+      const small = pick('480p') || pick('720p') || pick('360p'), big = pick('1080p') || pick('720p') || small;
+      return { title: pg.title.replace(/^File:/, '').replace(/\.\w+$/, '').replace(/_/g, ' '), src: (small || v).src || v.url, hd: (big || v).src || v.url, page: v.descriptionurl };
+    });
+  });
 }
-const retryTerm = s => s.k || termWords(s).find(w => UNIQUE.has(w)) || termWords(s).slice(0, 2).join(' ');
+const hasVideo = s => !!(s.preset || SPOT_VIDEO[s.en]);
 async function spotVideos(s) {
   if (s.preset) return s.preset;
-  const ok = v => relevant(s, v.title);
-  let v = (await fetchVideos(s.en)).filter(ok);
-  if (v.length < 2 && retryTerm(s) !== s.en) {   // 1개 이하면 핵심어로 한 번 더 찾아서 합침
-    const more = (await fetchVideos(retryTerm(s))).filter(ok);
-    v = [...v, ...more.filter(m => !v.some(x => x.src === m.src))];
-  }
-  return v.slice(0, 6);
+  const files = SPOT_VIDEO[s.en];
+  return files ? pinnedVideos(files) : [];
 }
 
 /* =========================================================
@@ -548,7 +550,7 @@ async function renderSpots(focusSpot) {
   if (!spots) {   // 데이터에 없는 여행지: Commons에서 직접 검색
     grid.innerHTML = '<div class="state">🔎 영상을 찾는 중…</div>';
     let vids = [];
-    try { vids = await withTimeout(fetchVideos(c.ko, 12), 12000); } catch {}
+    try { vids = (await withTimeout(fetchVideos(c.ko, 12), 12000)).filter(v => fold(v.title).includes(fold(c.ko))); } catch {}   // 제목에 검색어가 있는 영상만
     if (current !== c) return;
     if (!vids.length) {
       grid.innerHTML = `<div class="state"><b>🧭</b><p>'${esc(c.ko)}' 영상을 찾지 못했어요.</p>
@@ -618,11 +620,17 @@ function showPhoto(el, src) {
 }
 async function loadCard(el) {
   if (el._state === 'loading') return;
-  el._state = 'loading'; setBadge(el, '불러오는 중', 'loading');
-  const s = el._spot, photoP = withTimeout(spotPhoto(s), 10000).catch(() => null);
+  const s = el._spot, photoP = withTimeout(spotPhoto(s), 8000).catch(() => null);
+  if (!hasVideo(s)) {   // 고정 영상이 없으면 기다리지 않고 바로 사진
+    el._state = 'loading'; setBadge(el, '사진 불러오는 중', 'loading');
+    const img = await photoP;
+    if (el.isConnected) img ? setPhoto(el, img) : setPlaceholder(el);
+    return;
+  }
+  el._state = 'loading'; setBadge(el, '영상 불러오는 중', 'loading');
   photoP.then(src => el.isConnected && showPhoto(el, src));
   try {
-    el._vids = await withTimeout(spotVideos(s), 15000);
+    el._vids = await withTimeout(spotVideos(s), 8000);
     if (!el.isConnected) return;
     if (el._vids.length) return setVideo(el, 0);
     const img = await photoP;
