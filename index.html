@@ -113,6 +113,27 @@
   .note{font-size:12.5px;color:var(--muted);margin-top:14px}
   .empty{text-align:center;color:var(--muted);padding:40px 0}
 
+  /* ---------- 연관 검색어 ---------- */
+  .field.dest{position:relative}
+  .suggest{position:absolute;left:-8px;right:-8px;top:calc(100% + 10px);background:#fff;border-radius:16px;box-shadow:0 12px 40px #1b23332e;list-style:none;padding:6px;z-index:20;max-height:400px;overflow:auto}
+  .suggest .head{font-size:12px;color:var(--muted);font-weight:600;padding:8px 12px 4px}
+  .suggest li.opt{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;cursor:pointer}
+  .suggest li.opt.on{background:var(--soft)}
+  .suggest .ic{width:32px;height:32px;border-radius:9px;background:var(--soft);display:grid;place-items:center;flex:none;font-size:15px}
+  .suggest .ic .flag{height:14px}
+  .suggest b{font-weight:600;font-size:15px}
+  .suggest b mark{background:none;color:var(--accent)}
+  .suggest small{display:block;font-size:12.5px;color:var(--muted)}
+  .suggest .kind{margin-left:auto;font-size:11.5px;color:var(--muted);background:var(--soft);border-radius:6px;padding:2px 7px;flex:none}
+
+  /* ---------- 도착 공항 · 환율 ---------- */
+  .ap-pick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+  .ap-pick button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .ap-pick button:hover{border-color:var(--accent)}
+  .ap-pick button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .fact.fx{background:var(--accent-soft)}
+  .fact.fx b{color:#c2553b}
+
   /* ---------- Modal ---------- */
   .modal{position:fixed;inset:0;background:#0f1522d9;z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
   .modal.open{display:flex}
@@ -154,17 +175,14 @@
     <form class="search" id="searchForm" autocomplete="off">
       <div class="field dest">
         <label for="q">여행지 (국가 또는 도시)</label>
-        <input id="q" list="destList" placeholder="예: 일본, 파리, 다낭, 스위스…" required>
-        <datalist id="destList"></datalist>
+        <input id="q" placeholder="예: 일본, 오사카, 에펠탑, 다낭…" required autocomplete="off" role="combobox" aria-expanded="false" aria-controls="suggest">
+        <ul class="suggest" id="suggest" role="listbox" hidden></ul>
       </div>
       <div class="field">
         <label for="from">출발</label>
         <select id="from">
           <option value="ICN">인천 (ICN)</option>
           <option value="GMP">김포 (GMP)</option>
-          <option value="PUS">부산 김해 (PUS)</option>
-          <option value="CJU">제주 (CJU)</option>
-          <option value="TAE">대구 (TAE)</option>
         </select>
       </div>
       <div class="field"><label for="d1">가는 날</label><input type="date" id="d1"></div>
@@ -583,6 +601,52 @@ const REGIONS = [
 /* =========================================================
    Helpers
    ========================================================= */
+/* 국가별 도착 공항: 코드|도시|영문 도시(호텔 검색용)|인천 출발 소요시간  (첫 번째가 기본값) */
+const AIRPORTS = {
+  일본:"HND|도쿄 하네다|Tokyo|약 2시간 20분;NRT|도쿄 나리타|Tokyo|약 2시간 30분;KIX|오사카 간사이|Osaka|약 1시간 50분;FUK|후쿠오카|Fukuoka|약 1시간 20분;CTS|삿포로 신치토세|Sapporo|약 2시간 40분;OKA|오키나와 나하|Okinawa|약 2시간 20분;NGO|나고야 주부|Nagoya|약 1시간 55분",
+  프랑스:"CDG|파리 샤를드골|Paris|약 14시간;NCE|니스|Nice|경유",
+  이탈리아:"FCO|로마 피우미치노|Rome|약 13시간;MXP|밀라노 말펜사|Milan|약 13시간;VCE|베네치아|Venice|약 13시간 (시즌 직항)",
+  영국:"LHR|런던 히스로|London|약 14시간 30분;EDI|에든버러|Edinburgh|경유",
+  스페인:"BCN|바르셀로나|Barcelona|약 14시간;MAD|마드리드|Madrid|약 14시간",
+  스위스:"ZRH|취리히|Zurich|약 13시간 (시즌 직항);GVA|제네바|Geneva|경유",
+  체코:"PRG|프라하|Prague|약 12시간 30분",
+  그리스:"ATH|아테네|Athens|약 13시간 (시즌 직항);JTR|산토리니|Santorini|경유",
+  튀르키예:"IST|이스탄불|Istanbul|약 11시간 30분;ASR|카이세리 (카파도키아)|Cappadocia|경유;AYT|안탈리아|Antalya|경유",
+  미국:"JFK|뉴욕 JFK|New York|약 14시간;LAX|로스앤젤레스|Los Angeles|약 11시간;SFO|샌프란시스코|San Francisco|약 10시간 30분;LAS|라스베이거스|Las Vegas|약 11시간;SEA|시애틀|Seattle|약 10시간;HNL|하와이 호놀룰루|Honolulu|약 8시간 30분;GUM|괌|Guam|약 4시간 30분",
+  캐나다:"YVR|밴쿠버|Vancouver|약 10시간;YYZ|토론토|Toronto|약 13시간;YYC|캘거리 (밴프)|Banff|경유",
+  호주:"SYD|시드니|Sydney|약 10시간 30분;MEL|멜버른|Melbourne|약 11시간;BNE|브리즈번|Brisbane|약 9시간 30분;CNS|케언즈|Cairns|경유",
+  태국:"BKK|방콕 수완나품|Bangkok|약 6시간;HKT|푸켓|Phuket|약 6시간 30분;CNX|치앙마이|Chiang Mai|약 5시간 40분",
+  베트남:"DAD|다낭|Da Nang|약 4시간 30분;HAN|하노이|Hanoi|약 4시간 30분;SGN|호치민|Ho Chi Minh City|약 5시간 20분;CXR|나트랑|Nha Trang|약 5시간;PQC|푸꾸옥|Phu Quoc|약 5시간 40분",
+  대만:"TPE|타이베이 타오위안|Taipei|약 2시간 30분;TSA|타이베이 쑹산 (김포 출발)|Taipei|약 2시간 20분;KHH|가오슝|Kaohsiung|약 2시간 50분",
+  싱가포르:"SIN|싱가포르 창이|Singapore|약 6시간 30분",
+  중국:"PEK|베이징 서우두|Beijing|약 2시간;PVG|상하이 푸둥|Shanghai|약 2시간;DYG|장가계|Zhangjiajie|약 3시간 30분;CAN|광저우|Guangzhou|약 3시간 40분",
+  인도네시아:"DPS|발리 덴파사르|Bali|약 7시간;CGK|자카르타|Jakarta|약 7시간",
+  필리핀:"CEB|세부 막탄|Cebu|약 4시간 30분;MNL|마닐라|Manila|약 4시간;KLO|칼리보 (보라카이)|Boracay|약 4시간 20분;TAG|보홀 팡라오|Bohol|약 4시간 40분",
+  이집트:"CAI|카이로|Cairo|약 12~15시간 (주로 경유)",
+  홍콩:"HKG|홍콩|Hong Kong|약 3시간 50분",
+  말레이시아:"KUL|쿠알라룸푸르|Kuala Lumpur|약 6시간 30분;BKI|코타키나발루|Kota Kinabalu|약 5시간;PEN|페낭|Penang|경유",
+  라오스:"VTE|비엔티안|Vientiane|약 5시간 30분;LPQ|루앙프라방|Luang Prabang|경유",
+  몽골:"UBN|울란바토르|Ulaanbaatar|약 3시간 30분",
+  인도:"DEL|델리|New Delhi|약 8시간 30분;BOM|뭄바이|Mumbai|경유",
+  몰디브:"MLE|말레|Maldives|약 9~11시간",
+  아랍에미리트:"DXB|두바이|Dubai|약 9시간 30분;AUH|아부다비|Abu Dhabi|약 10시간",
+  독일:"FRA|프랑크푸르트|Frankfurt|약 14시간;MUC|뮌헨|Munich|경유;BER|베를린|Berlin|경유",
+  오스트리아:"VIE|빈|Vienna|약 12시간 30분;SZG|잘츠부르크|Salzburg|경유",
+  헝가리:"BUD|부다페스트|Budapest|약 12시간",
+  크로아티아:"ZAG|자그레브|Zagreb|약 12시간 (시즌 직항);DBV|두브로브니크|Dubrovnik|경유;SPU|스플리트|Split|경유",
+  네덜란드:"AMS|암스테르담 스키폴|Amsterdam|약 14시간",
+  포르투갈:"LIS|리스본|Lisbon|약 16시간 (경유);OPO|포르투|Porto|경유",
+  아이슬란드:"KEF|레이캬비크 케플라비크|Reykjavik|약 16시간+ (경유)",
+  노르웨이:"OSL|오슬로|Oslo|약 14시간+ (경유);BGO|베르겐|Bergen|경유;TOS|트롬쇠|Tromso|경유",
+  뉴질랜드:"AKL|오클랜드|Auckland|약 11시간;ZQN|퀸스타운|Queenstown|경유;CHC|크라이스트처치|Christchurch|경유",
+  멕시코:"MEX|멕시코시티|Mexico City|약 13시간 30분;CUN|칸쿤|Cancun|경유",
+  페루:"LIM|리마|Lima|약 20시간+ (경유);CUZ|쿠스코|Cusco|경유"
+};
+DESTS.forEach(d => d.aps = (AIRPORTS[d.ko]||`${d.iata}|${d.city}|${d.cityEn}|${d.flight}`).split(';')
+  .map(s => { const [code, name, en, time] = s.split('|'); return {code, name, en, time}; }));
+// 도시 이름으로 검색했으면 그 도시의 공항을 기본 선택
+const airportFor = (d, word) => (word && d.aps.find(a => norm(a.name).includes(norm(word)) || norm(a.en) === norm(word))) || d.aps[0];
+
 // Windows는 국기 이모지를 글자(JP)로 표시하므로 국기 이미지를 사용
 const CC = {일본:"jp",프랑스:"fr",이탈리아:"it",영국:"gb",스페인:"es",스위스:"ch",체코:"cz",그리스:"gr",튀르키예:"tr",미국:"us",캐나다:"ca",호주:"au",태국:"th",베트남:"vn",대만:"tw",싱가포르:"sg",중국:"cn",인도네시아:"id",필리핀:"ph",이집트:"eg",
   홍콩:"hk",말레이시아:"my",라오스:"la",몽골:"mn",인도:"in",몰디브:"mv",아랍에미리트:"ae",독일:"de",오스트리아:"at",헝가리:"hu",크로아티아:"hr",네덜란드:"nl",포르투갈:"pt",아이슬란드:"is",노르웨이:"no",뉴질랜드:"nz",멕시코:"mx",페루:"pe"};
@@ -605,8 +669,6 @@ const yymmdd = s => s.slice(2).replace(/-/g,'');
   const a = new Date(); a.setDate(a.getDate()+30);
   const b = new Date(a); b.setDate(b.getDate()+4);
   $('#d1').value = iso(a); $('#d2').value = iso(b); $('#d1').min = iso(new Date());
-  $('#destList').innerHTML = DESTS.map(d=>`<option value="${d.ko}">`).join('') +
-    DESTS.map(d=>`<option value="${d.city}">${d.ko}</option>`).join('');
   renderHome();
 })();
 function chip(k){ const d = findDest(k); return `<button class="chip" data-q="${k}">${d.flagImg}${k}</button>`; }
@@ -680,10 +742,12 @@ async function wikiImage(term){
 let current = null;
 const ytLink = name => 'https://www.youtube.com/results?search_query='+enc(name+' 여행 shorts');
 
-function render(q){
+let curAp = null;   // 선택된 도착 공항
+function render(q, word){
   const d = findDest(q);
   current = d || { ko:q, flag:"📍", custom:true, city:q, cityEn:q, tagline:"검색한 여행지의 영상을 모아봤어요",
     spots:null, areas:[{n:q+" 중심가",d:"주요 명소 접근성이 좋은 지역"}] };
+  curAp = d ? airportFor(d, word ?? q) : null;
   const c = current;
   history.replaceState(null,'','#'+enc(c.ko));
   $('#main').innerHTML = `
@@ -692,6 +756,7 @@ function render(q){
       ${c.custom ? '' : `<div class="facts">
         <div class="fact"><b>비자</b>${esc(c.visa)}</div>
         <div class="fact"><b>통화</b>${esc(c.currency)}</div>
+        <div class="fact fx" id="fx"><b>환율</b>불러오는 중…</div>
         <div class="fact"><b>시차</b>${esc(c.tz)}</div></div>`}
     </div>
     <nav class="tabs"><a class="tab" href="#spots">🎬 명소 영상</a><a class="tab" href="#flights">✈️ 항공편</a><a class="tab" href="#hotels">🏨 호텔</a></nav>
@@ -703,6 +768,7 @@ function render(q){
     <section class="block" id="hotels"></section>`;
   renderTravel(c);
   renderSpots(c);
+  if (!c.custom) showFx(c);
   $('#main').scrollIntoView({behavior:'smooth'});
 }
 
@@ -801,7 +867,10 @@ addEventListener('keydown', e => e.key==='Escape' && closeModal());
 function renderTravel(c){
   const from = $('#from').value, fromName = $('#from').selectedOptions[0].text.split(' (')[0];
   const d1 = $('#d1').value, d2 = $('#d2').value, pax = $('#pax').value;
-  const to = c.iata;
+  const ap = curAp || { code: c.iata, name: c.city, en: c.cityEn, time: c.flight };
+  const to = ap.code;
+  const base = c;   // 추천 숙소 지역은 대표 도시 기준
+  c = { ...c, city: ap.name.replace(/ \(.*\)$/,''), cityEn: ap.en, flight: ap.time };   // 선택한 공항 기준으로 항공·호텔 검색
   const nights = Math.max(1, Math.round((new Date(d2)-new Date(d1))/864e5));
 
   const gf = 'https://www.google.com/travel/flights?hl=ko&curr=KRW&q=' + enc(`Flights to ${to||c.cityEn} from ${from} on ${d1} through ${d2} ${pax} adults`);
@@ -814,6 +883,8 @@ function renderTravel(c){
     <div class="block-title"><h3>✈️ 항공편</h3><small>${esc(fromName)} → ${esc(c.city)} · ${d1} ~ ${d2} · 성인 ${pax}명</small></div>
     <div class="two">
       <div class="panel">
+        ${c.aps && c.aps.length > 1 ? `<h4>도착 공항 선택</h4>
+        <div class="ap-pick">${c.aps.map(a => `<button type="button" data-ap="${a.code}" class="${a.code===to?'on':''}">${esc(a.name)} <small>${a.code}</small></button>`).join('')}</div>` : ''}
         <h4>노선 정보</h4>
         <div class="route">
           <div class="ap">${from}<small>${esc(fromName)}</small></div>
@@ -822,7 +893,7 @@ function renderTravel(c){
         </div>
         ${c.custom ? `<p class="note">이 여행지는 상세 노선 정보가 없어요. 오른쪽 사이트에서 공항을 선택해 검색해 주세요.</p>` : `
         <dl class="kv">
-          <dt>도착 공항</dt><dd>${esc(c.airport)} (${to})</dd>
+          <dt>도착 공항</dt><dd>${esc(ap.name)} (${to})</dd>
           <dt>비행 시간</dt><dd>${esc(c.flight)}${from!=='ICN'?' <small style="color:var(--muted);font-weight:400">(인천 기준)</small>':''}</dd>
           <dt>주요 항공사</dt><dd>${esc(c.airlines)}</dd>
           <dt>입국</dt><dd>${esc(c.visa)}</dd>
@@ -847,16 +918,100 @@ function renderTravel(c){
       <a class="lnk" href="${gh(c.cityEn)}" target="_blank" rel="noopener"><div><b>Google 호텔</b><span>지도로 위치·가격 비교</span></div><span class="arr">→</span></a>
     </div>
     <div class="panel">
-      <h4>추천 숙소 지역</h4>
+      <h4>추천 숙소 지역${base.custom ? '' : ` · ${esc(base.ko)}`}</h4>
       <div class="areas">${c.areas.map(a => `
         <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
-          <div class="mini"><a href="${bk(a.q||a.n+' '+c.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${gh(a.q||a.n+' '+c.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
+          <div class="mini"><a href="${bk(a.q||a.n+' '+base.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${ag(a.q||a.n+' '+base.cityEn)}" target="_blank" rel="noopener">아고다</a><a href="${gh(a.q||a.n+' '+base.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
       </div>
     </div>`;
 }
 
 /* ---------- 이벤트 ---------- */
-$('#searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('#q').value.trim(); if (q) render(q); });
+/* ---------- 도착 공항 선택 ---------- */
+document.addEventListener('click', e => {
+  const b = e.target.closest('.ap-pick button'); if (!b || !current?.aps) return;
+  curAp = current.aps.find(a => a.code === b.dataset.ap); renderTravel(current);
+});
+
+/* ---------- 환율 (open.er-api.com, 매일 갱신) ---------- */
+let fxData = null;
+async function showFx(c){
+  const cur = (c.currency.match(/\(([A-Z]{3})\)/) || [])[1];
+  const el = () => document.getElementById('fx');
+  if (!cur) { el()?.remove(); return; }
+  try {
+    fxData = fxData || fetch('https://open.er-api.com/v6/latest/KRW').then(r => r.json());
+    const j = await fxData; const rate = j.rates?.[cur];
+    if (!rate || current !== c || !el()) { if (!rate) el()?.remove(); return; }
+    const won = 1 / rate, unit = won < 1 ? 1000 : won < 10 ? 100 : 1;   // 엔·동처럼 단위가 작으면 100·1000 단위로
+    const date = new Date(j.time_last_update_unix * 1000);
+    el().innerHTML = `<b>환율 · ${date.getMonth()+1}/${date.getDate()} 기준</b>${unit.toLocaleString()} ${cur} = ${(won*unit).toLocaleString('ko-KR',{maximumFractionDigits: won*unit < 100 ? 2 : 0})}원`;
+  } catch { el()?.remove(); }
+}
+
+/* ---------- 연관 검색어 ---------- */
+const hasKo = s => /[가-힣]/.test(s);
+const SUG = [];
+DESTS.forEach(d => {
+  SUG.push({t:0, label:d.ko, sub:d.tagline, d, keys:[d.ko, d.city, ...d.aliases]});
+  const seen = new Set([d.ko]);
+  const addCity = (label, keys) => { if (seen.has(label)) return; seen.add(label);
+    SUG.push({t:1, label, sub:d.ko, d, word:label, keys}); };
+  d.aliases.filter(hasKo).forEach(a => addCity(a, [a]));
+  d.aps.forEach(a => addCity(a.name.split(' ')[0], [a.name, a.en, a.code]));
+  d.spots.forEach(s => SUG.push({t:2, label:s.ko, sub:`${d.ko} · ${s.d}`, d, keys:[s.ko, s.en]}));
+});
+const KIND = ['국가','도시','명소'];
+const POPULAR = ["일본","베트남","태국","대만","홍콩","프랑스","스위스","미국"];
+let sugItems = [], sugIdx = -1;
+
+function suggest(){
+  const q = $('#q').value.trim(), n = norm(q);
+  if (!n) sugItems = POPULAR.map(k => SUG.find(s => s.t===0 && s.label===k));
+  else sugItems = SUG.map(s => {
+      const l = norm(s.label);
+      const score = l.startsWith(n) ? 0 : l.includes(n) ? 1 : s.keys.some(k => norm(k).includes(n)) ? 2 : -1;
+      return {s, score};
+    }).filter(x => x.score >= 0).sort((a,b) => a.score-b.score || a.s.t-b.s.t).slice(0,8).map(x => x.s);
+  sugIdx = n && sugItems.length ? 0 : -1;
+  const hl = label => { const i = norm(label).indexOf(n);  // 입력한 부분 강조
+    return n && i >= 0 && !/\s/.test(label) ? esc(label.slice(0,i))+'<mark>'+esc(label.slice(i,i+n.length))+'</mark>'+esc(label.slice(i+n.length)) : esc(label); };
+  const box = $('#suggest');
+  box.innerHTML = (n ? '' : '<li class="head">인기 여행지</li>') + (sugItems.length ? sugItems.map((s,i) => `
+    <li class="opt${i===sugIdx?' on':''}" role="option" data-i="${i}">
+      <span class="ic">${s.t===0 ? s.d.flagImg : s.t===1 ? '📍' : '📸'}</span>
+      <span><b>${hl(s.label)}</b><small>${esc(s.sub)}</small></span>
+      <span class="kind">${KIND[s.t]}</span></li>`).join('')
+    : `<li class="head">'${esc(q)}' 검색 결과가 없어요 · Enter를 누르면 영상을 직접 찾아볼게요</li>`);
+  box.hidden = false; $('#q').setAttribute('aria-expanded','true');
+}
+function hideSuggest(){ $('#suggest').hidden = true; $('#q').setAttribute('aria-expanded','false'); }
+function pick(s){ $('#q').value = s.label; hideSuggest(); render(s.d.ko, s.word); }
+$('#q').addEventListener('input', suggest);
+$('#q').addEventListener('focus', suggest);
+$('#q').addEventListener('blur', () => setTimeout(hideSuggest, 120));
+$('#q').addEventListener('keydown', e => {
+  if ($('#suggest').hidden || !sugItems.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    sugIdx = (sugIdx + (e.key === 'ArrowDown' ? 1 : -1) + sugItems.length) % sugItems.length;
+    document.querySelectorAll('#suggest .opt').forEach((li,i) => li.classList.toggle('on', i === sugIdx));
+  } else if (e.key === 'Escape') hideSuggest();
+});
+$('#suggest').addEventListener('mousedown', e => {
+  const li = e.target.closest('.opt'); if (li){ e.preventDefault(); pick(sugItems[+li.dataset.i]); }
+});
+$('#suggest').addEventListener('mousemove', e => {
+  const li = e.target.closest('.opt'); if (!li || +li.dataset.i === sugIdx) return;
+  sugIdx = +li.dataset.i; document.querySelectorAll('#suggest .opt').forEach((x,i) => x.classList.toggle('on', i === sugIdx));
+});
+
+$('#searchForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = $('#q').value.trim(); if (!q) return;
+  if (!$('#suggest').hidden && sugIdx >= 0 && sugItems[sugIdx]) return pick(sugItems[sugIdx]);
+  hideSuggest(); render(q);
+});
 document.addEventListener('click', e => { const b = e.target.closest('.chip'); if (b){ $('#q').value = b.dataset.q; render(b.dataset.q); } });
 $('.logo').addEventListener('click', () => { history.replaceState(null,'',location.pathname); $('#q').value=''; current = null; renderHome(); scrollTo({top:0,behavior:'smooth'}); });
 if (location.hash.length > 1){ const q = decodeURIComponent(location.hash.slice(1)); if (!['spots','flights','hotels'].includes(q)){ $('#q').value = q; render(q); } }
