@@ -63,6 +63,21 @@ const airportFor = (d, word) => (word && d.aps.find(a => norm(a.name).includes(n
 const cityOf = ap => ap.name.split(' ')[0];
 const flightHours = d => { const m = (d.aps[0].time || '').match(/(\d+)시간/); return m ? +m[1] : 99; };
 
+// 선택한 공항(도시) 기준 명소. 같은 도시 공항(나리타→하네다 등)은 SPOT_ALIAS로 공유
+const spotCache = new Map();
+function spotsFor(d, ap) {
+  const code = SPOT_ALIAS[ap?.code] || ap?.code;
+  if (!code || !CITY_SPOTS[code]) return d.spots;
+  if (!spotCache.has(code)) spotCache.set(code, CITY_SPOTS[code].split(';').map(s => {
+    const [ko, en, desc, k, g] = s.split('|'); return { ko, en, d: desc, k: k || undefined, g: g || '' };
+  }));
+  return spotCache.get(code);
+}
+// 제휴 파라미터 (config.js). 값이 있을 때만 링크에 붙이고 rel="sponsored" 표시
+const affOn = key => typeof AFFILIATE !== 'undefined' && !!AFFILIATE[key];
+const aff = (key, url) => affOn(key) ? url + (url.includes('?') ? '&' : '?') + AFFILIATE[key] : url;
+const rel = key => affOn(key) ? 'sponsored noopener' : 'noopener';
+
 function areasFor(d, ap) {
   if (AREAS[ap.code]) return AREAS[ap.code].split(';').map(s => { const [n, desc, q] = s.split('|'); return { n, d: desc, q }; });
   if (!d.aps || ap.en === d.aps[0].en) return d.areas;   // 대표 공항과 같은 도시 (예: 나리타, 쑹산)
@@ -196,7 +211,11 @@ DESTS.forEach(d => {
   };
   d.aliases.filter(hasKo).forEach(a => addCity(a, [a]));
   d.aps.forEach(a => addCity(cityOf(a), [a.name, a.en, a.code]));
-  d.spots.forEach(s => SUG.push({ t: 2, label: s.ko, sub: `${d.ko} · ${s.d}`, d, keys: [s.ko, s.en] }));
+  const seenSpot = new Set();   // 명소는 해당 도시(공항)와 함께 기억 → 고르면 그 도시로 바로 이동
+  d.aps.forEach(a => spotsFor(d, a).forEach(s => {
+    if (seenSpot.has(s.ko)) return; seenSpot.add(s.ko);
+    SUG.push({ t: 2, label: s.ko, sub: `${d.ko} ${cityOf(a)} · ${s.d}`, d, ap: a.code, keys: [s.ko, s.en] });
+  }));
 });
 const KIND = ['국가', '도시', '명소'];
 let sugItems = [], sugIdx = -1;
@@ -237,7 +256,7 @@ function moveSug(i) {
 }
 function pickSug(s) {
   $('#q').value = s.label; hideSuggest();
-  render(s.d, s.word, { spot: s.t === 2 ? s.label : null });
+  render(s.d, s.word, { spot: s.t === 2 ? s.label : null, ap: s.ap || null });
 }
 $('#q').addEventListener('input', suggest);
 $('#q').addEventListener('focus', () => { $$('.pop').forEach(p => p.hidden = true); suggest(); });
@@ -273,11 +292,12 @@ function cached(key, fn) {
   p.catch(() => memo.delete(key));   // 실패는 캐시하지 않음 (다시 시도 가능)
   memo.set(key, p); return p;
 }
-// 위성사진·관측 영상처럼 여행 영상이 아닌 것은 제외
-const NOT_TRAVEL = /\b(cira|goes-?\d*|nasa|noaa|landsat|sentinel|modis|copernicus|satellite|from space|iss\b|radar|himawari|simulation|lecture|interview|press conference|state dinner|president|minister|potus)\b/i;
+// 여행 영상이 아닌 것 제외: 위성·관측 영상, 지도·3D 렌더링, 행사·정치 영상, 1960년대 이전 흑백 필름
+const NOT_TRAVEL = /\b(cira|goes-?\d*|nasa|noaa|landsat|sentinel|modis|copernicus|satellite|skysat|from space|iss\b|radar|himawari|simulation|lecture|interview|press conference|state dinner|president|minister|potus|map|maps|3d|render(ing)?|animation|orbit|peakvisor|peak ?names|path names|newsreel|footage)\b/i;
+const OLD_FILM = /\b(18[89]\d|19[0-6]\d)\b/;
 const words = t => fold(t).split(/[\s-]+/).filter(w => w.length > 3);
 function fetchVideos(term, limit = 8) {
-  return cached(`v:${term}|${limit}`, async () => {
+  return cached(`v2:${term}|${limit}`, async () => {
     const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
       + '&generator=search&gsrnamespace=6&gsrlimit=' + limit + '&gsrsearch=' + enc('filetype:video ' + term)
       + '&prop=videoinfo&viprop=url|mime|size|derivatives&viurlwidth=640';
@@ -286,10 +306,12 @@ function fetchVideos(term, limit = 8) {
     return pages.map(pg => {
       const v = pg.videoinfo?.[0]; if (!v) return null;
       const title = pg.title.replace(/^File:/, '').replace(/\.\w+$/, '').replace(/_/g, ' ');
-      if (NOT_TRAVEL.test(title)) return null;
+      if (NOT_TRAVEL.test(title) || OLD_FILM.test(title)) return null;
       const ders = (v.derivatives || []).filter(x => /webm|mp4/.test(x.type));
+      const maxH = Math.max(0, ...ders.map(x => Math.min(x.height || 0, x.width || 0) || x.height || 0));
+      if (ders.length && maxH < 400) return null;          // 저화질(360p 이하)만 있는 영상 제외
       const pick = h => ders.find(x => x.transcodekey && x.transcodekey.startsWith(h));
-      const small = pick('480p') || pick('360p') || pick('720p') || pick('240p');
+      const small = pick('480p') || pick('720p') || pick('360p');
       const big = pick('1080p') || pick('720p') || small;
       if (!small && v.size > 40e6) return null;            // 변환본 없는 큰 원본은 제외
       return { title, src: (small || v).src || v.url, hd: (big || v).src || v.url, poster: v.thumburl, page: v.descriptionurl };
@@ -298,11 +320,16 @@ function fetchVideos(term, limit = 8) {
       .sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.v);
   });
 }
+// 고정 사진(photos.js)이 없는 명소용: 지도·로고·국기·인물 같은 그림은 건너뛰고 첫 번째 풍경 사진
+const BAD_IMG = /\.svg$|map|locator|logo|flag|coat_of_arms|seal|diagram|plan|chart|location|emblem|icon|portrait|\.gif$|\.webm$/i;
 function wikiImage(term) {
-  return cached('i:' + term, async () => {
-    const r = await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=1&gsrsearch='
-      + enc(term) + '&prop=pageimages&piprop=thumbnail&pithumbsize=800');
-    const j = await r.json(); const pg = Object.values(j.query?.pages || {})[0];
+  if (SPOT_IMG[term]) return Promise.resolve(photoUrl(SPOT_IMG[term]));
+  return cached('i2:' + term, async () => {
+    const r = await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=4&gsrsearch='
+      + enc(term) + '&prop=pageimages&piprop=thumbnail|name|original&pithumbsize=800');
+    const j = await r.json();
+    const pg = Object.values(j.query?.pages || {}).sort((a, b) => a.index - b.index)
+      .find(p => p.thumbnail && p.pageimage && !BAD_IMG.test(p.pageimage) && (p.original?.width || 0) >= 700);
     return pg?.thumbnail?.source || null;
   });
 }
@@ -321,8 +348,11 @@ async function spotVideos(s) {
   if (s.preset) return s.preset;
   const ok = v => relevant(s, v.title);
   let v = (await fetchVideos(s.en)).filter(ok);
-  if (!v.length) v = (await fetchVideos(retryTerm(s))).filter(ok);
-  return v;
+  if (v.length < 2 && retryTerm(s) !== s.en) {   // 1개 이하면 핵심어로 한 번 더 찾아서 합침
+    const more = (await fetchVideos(retryTerm(s))).filter(ok);
+    v = [...v, ...more.filter(m => !v.some(x => x.src === m.src))];
+  }
+  return v.slice(0, 6);
 }
 
 /* =========================================================
@@ -385,8 +415,8 @@ function renderHome() {
 
   html += `<section class="home-sec"><h2 class="sec-h">🔥 지금 인기 여행지</h2>
     <div class="carousel" role="list">${POPULAR.map(destByKo).map(d => `
-      <button type="button" class="cover" role="listitem" data-go="${d.ko}" data-cover="${esc(d.spots[0].en)}">
-        <span class="cover-img"></span><span class="hot">HOT</span>
+      <button type="button" class="cover" role="listitem" data-go="${d.ko}">
+        <img class="cover-img" src="${photoUrl(COVER_IMG[d.ko] || SPOT_IMG[spotsFor(d, d.aps[0])[0].en], 640)}" alt="" loading="lazy" decoding="async"><span class="hot">HOT</span>
         <span class="cover-txt"><b>${d.flagImg}${d.ko}</b><small>${esc(d.tagline)}</small><em>✈ ${esc(d.aps[0].time)}</em></span>
       </button>`).join('')}</div></section>`;
 
@@ -399,13 +429,6 @@ function renderHome() {
 
   $('#main').innerHTML = html;
   bindTripCard();
-  // 인기 여행지 커버 사진은 보일 때 불러옴
-  const io = new IntersectionObserver(es => es.forEach(en => {
-    if (!en.isIntersecting) return; io.unobserve(en.target);
-    const box = $('.cover-img', en.target);
-    wikiImage(en.target.dataset.cover).then(src => { if (src) box.style.backgroundImage = `url("${src}")`; }).catch(() => {});
-  }), { rootMargin: '200px' });
-  $$('.cover').forEach(c => io.observe(c));
 }
 function savedSection() {
   const groups = {};
@@ -460,7 +483,7 @@ function render(q, word, opts = {}) {
   $('#main').innerHTML = `
     <div class="dest-head">
       <div>
-        <h2>${c.flagImg}${esc(c.ko)}${I.best?.includes(m) ? '<span class="now-good">지금 가기 좋아요</span>' : ''}</h2>
+        <h2>${c.flagImg}${esc(c.ko)}<span id="seasonBadge"></span></h2>
         <p>${esc(c.tagline)}</p>
       </div>
       <div class="head-acts">
@@ -480,7 +503,7 @@ function render(q, word, opts = {}) {
     <nav class="tabs" aria-label="여행지 메뉴">${SECTIONS.filter(([id]) => !(c.custom && ['plan'].includes(id)))
       .map(([id, l]) => `<a class="tab" href="#sec-${id}" data-sec="${id}">${l}</a>`).join('')}</nav>
     <section class="block" id="sec-spots" aria-labelledby="h-spots">
-      <div class="block-title"><h3 id="h-spots">🎬 주요 명소 숏폼</h3>
+      <div class="block-title"><h3 id="h-spots">🎬 <span id="spotCity">${esc(c.custom ? c.ko : cityOf(curAp))}</span> 명소 숏폼</h3>
         <button type="button" class="btn reels" id="reelsBtn">▶ 릴스로 몰아보기</button></div>
       <div class="grid" id="grid"></div>
     </section>
@@ -520,7 +543,8 @@ const mapLink = (name, city) => 'https://www.google.com/maps/search/?api=1&query
 let loader, player;
 async function renderSpots(focusSpot) {
   const c = current, grid = $('#grid');
-  let spots = c.spots;
+  let spots = c.custom ? c.spots : spotsFor(c, curAp);
+  if ($('#spotCity')) $('#spotCity').textContent = c.custom ? c.ko : cityOf(curAp);
   if (!spots) {   // 데이터에 없는 여행지: Commons에서 직접 검색
     grid.innerHTML = '<div class="state">🔎 영상을 찾는 중…</div>';
     let vids = [];
@@ -534,7 +558,7 @@ async function renderSpots(focusSpot) {
     }
     spots = c.spots = vids.map(v => ({ ko: v.title, en: null, d: '', preset: [v] }));
   }
-  const city = c.custom ? c.ko : cityOf(c.aps[0]);
+  $('#reelsBtn').hidden = false;
   grid.innerHTML = spots.map((s, i) => `
     <article class="vcard" data-i="${i}" tabindex="0" aria-label="${esc(s.ko)} 영상 크게 보기">
       <div class="media"><div class="skeleton"></div></div>
@@ -542,7 +566,7 @@ async function renderSpots(focusSpot) {
         <span class="badge">불러오는 중</span>
         ${c.custom ? '' : `<button type="button" class="heart${isSaved(c.ko, s.ko) ? ' on' : ''}" aria-pressed="${isSaved(c.ko, s.ko)}" aria-label="${esc(s.ko)} 보관함에 저장">♥</button>`}
       </div>
-      <div class="meta"><h4>${esc(s.ko)}</h4>${s.d ? `<p>${esc(s.d)}</p>` : ''}
+      <div class="meta">${s.g ? `<span class="tag">🚆 근교 · ${esc(s.g)}</span>` : ''}<h4>${esc(s.ko)}</h4>${s.d ? `<p>${esc(s.d)}</p>` : ''}
         <div class="acts"><a class="pill" href="${ytLink(s.en || s.ko)}" target="_blank" rel="noopener">▶ 쇼츠</a>
         ${s.en ? `<a class="pill" href="${mapLink(s.en, '')}" target="_blank" rel="noopener">📍 지도</a>` : ''}</div></div>
     </article>`).join('');
@@ -565,7 +589,7 @@ $('#main').addEventListener('click', e => {
     const on = toggleSaved(current.ko, card._spot.ko), h = e.target.closest('.heart');
     h.classList.toggle('on', on); h.setAttribute('aria-pressed', on); renderPlan(); return;
   }
-  if (e.target.closest('.retry')) { card._state = null; card.querySelector('.media').innerHTML = '<div class="skeleton"></div>'; return loadCard(card); }
+  if (e.target.closest('.retry')) { card._state = null; card._img = null; card.querySelector('.media').innerHTML = '<div class="skeleton"></div>'; return loadCard(card); }
   if (e.target.closest('.badge.cycle')) return cycle(card);
   openViewer(+card.dataset.i, false);
 });
@@ -581,47 +605,65 @@ function setBadge(el, html, cls = '') {
   const b = $('.badge', el); b.className = 'badge ' + cls; b.innerHTML = html;
   if (cls.includes('cycle')) { b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0'); b.setAttribute('aria-label', '다른 영상 보기'); }
 }
+// 카드: 고정 대표 사진을 먼저 보여주고, 영상이 준비되면 그 위에 자연스럽게 겹쳐 재생
+const spotPhoto = s => s.en ? wikiImage(s.en).catch(() => null) : Promise.resolve(s.preset?.[0]?.poster || null);
+function showPhoto(el, src) {
+  if (!src || el._img === src) return;
+  const media = $('.media', el);
+  $('img.poster', media)?.remove();
+  const img = new Image(); img.className = 'poster'; img.alt = el._spot.ko; img.decoding = 'async'; img.src = src;
+  img.onload = () => $('.skeleton', media)?.remove();
+  img.onerror = () => { img.remove(); el._img = null; if (el._state === 'photo') setPlaceholder(el); };
+  media.prepend(img); el._img = src;
+}
 async function loadCard(el) {
   if (el._state === 'loading') return;
   el._state = 'loading'; setBadge(el, '불러오는 중', 'loading');
-  const s = el._spot;
+  const s = el._spot, photoP = withTimeout(spotPhoto(s), 10000).catch(() => null);
+  photoP.then(src => el.isConnected && showPhoto(el, src));
   try {
     el._vids = await withTimeout(spotVideos(s), 15000);
     if (!el.isConnected) return;
     if (el._vids.length) return setVideo(el, 0);
-    const img = s.en ? await withTimeout(wikiImage(s.en), 10000).catch(() => null) : null;
-    if (!el.isConnected) return;
+    const img = await photoP;
     img ? setPhoto(el, img) : setPlaceholder(el);
   } catch {
-    if (el.isConnected) setError(el);
+    if (!el.isConnected) return;
+    const img = await photoP;
+    img ? setPhoto(el, img, true) : setError(el);   // 영상 연결 실패: 사진이라도 보여주고 다시 시도 가능
   }
 }
 function setVideo(el, idx) {
   const v = el._vids[idx]; el._idx = idx; el._state = 'video';
   const media = $('.media', el);
-  media.innerHTML = '<div class="skeleton"></div>';
+  $('video', media)?.remove(); $('.placeholder', media)?.remove();
+  if (!el._img && !$('.skeleton', media)) media.insertAdjacentHTML('afterbegin', '<div class="skeleton"></div>');
   const vid = document.createElement('video');
-  Object.assign(vid, { muted: true, loop: true, playsInline: true, preload: 'metadata', poster: v.poster || '', src: v.src });
+  Object.assign(vid, { muted: true, loop: true, playsInline: true, preload: 'metadata', src: v.src });   // 흐린 첫 프레임 대신 대표 사진이 비침
   vid.setAttribute('muted', ''); vid.setAttribute('playsinline', ''); vid.setAttribute('aria-hidden', 'true');
-  media.prepend(vid); el._v = vid;
+  media.append(vid); el._v = vid;
   const n = el._vids.length;
-  setBadge(el, n > 1 ? `영상 ${idx + 1}/${n} <span aria-hidden="true">⟳</span>` : '영상', n > 1 ? 'cycle' : '');
-  vid.addEventListener('loadeddata', () => $('.skeleton', media)?.remove(), { once: true });
-  vid.addEventListener('playing', () => $('.badge', el).classList.add('live'), { once: true });
+  setBadge(el, `영상 ${idx + 1}/${n} <span aria-hidden="true">⟳</span>`, 'cycle');   // 영상 수와 관계없이 같은 모양
+  vid.addEventListener('playing', () => { vid.classList.add('on'); $('.skeleton', media)?.remove(); $('.badge', el).classList.add('live'); }, { once: true });
   vid.addEventListener('error', () => {   // 재생 실패 → 다음 후보 → 사진
+    if (el._v !== vid) return;
     if (idx + 1 < n) return setVideo(el, idx + 1);
-    el._vids = []; el._v = null;
-    (el._spot.en ? wikiImage(el._spot.en) : Promise.resolve(null)).then(img => img ? setPhoto(el, img) : setPlaceholder(el)).catch(() => setPlaceholder(el));
+    vid.remove(); el._vids = []; el._v = null;
+    el._img ? setPhoto(el, el._img) : spotPhoto(el._spot).then(img => img ? setPhoto(el, img) : setPlaceholder(el));
   });
   vid.play().catch(() => {});
 }
-const cycle = el => el._vids?.length > 1 && setVideo(el, (el._idx + 1) % el._vids.length);
-function setPhoto(el, src) {
-  el._state = 'photo'; el._img = src; el._v = null;
-  const img = new Image(); img.className = 'poster'; img.alt = el._spot.ko; img.loading = 'lazy'; img.decoding = 'async'; img.src = src;
-  img.onerror = () => setPlaceholder(el);
-  $('.media', el).replaceChildren(img);
-  setBadge(el, '사진 · 영상은 쇼츠에서', 'photo');
+function cycle(el) {
+  if (!el._vids?.length) return;
+  if (el._vids.length < 2) return toast(`'${el._spot.ko}' 영상은 1개예요 · ▶ 쇼츠에서 더 볼 수 있어요`);
+  setVideo(el, (el._idx + 1) % el._vids.length);
+}
+function setPhoto(el, src, failed) {
+  el._state = failed ? 'error' : 'photo'; el._v = null;
+  $('video', $('.media', el))?.remove();
+  showPhoto(el, src);
+  setBadge(el, failed ? '사진 · 영상 연결 실패' : '사진 · 영상은 쇼츠에서', 'photo');
+  if (failed && !$('.retry', el)) $('.media', el).insertAdjacentHTML('beforeend', '<button type="button" class="retry floating">영상 다시 시도</button>');
 }
 function setPlaceholder(el) {
   el._state = 'none'; el._v = null; el._img = null;
@@ -668,7 +710,7 @@ async function showViewer(i) {
   vid.pause();
   if (v) {
     img.hidden = true; vid.hidden = false;
-    vid.poster = v.poster || ''; vid.src = v.hd; vid.loop = !$('#vAuto').checked; vid.controls = true; vid.muted = false;
+    vid.poster = el._img || ''; vid.src = v.hd; vid.loop = !$('#vAuto').checked; vid.controls = true; vid.muted = false;
     vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
     $('#vSrc').hidden = false; $('#vSrc').href = v.page;
     $('#vCredit').textContent = `${v.title} · Wikimedia Commons`;
@@ -778,21 +820,57 @@ async function showFx() {
 /* ---------- 날씨 (Open-Meteo, 키 없이 사용) ---------- */
 const WX = [[0, '☀️', '맑음'], [1, '🌤', '대체로 맑음'], [2, '⛅', '구름 조금'], [3, '☁️', '흐림'], [48, '🌫', '안개'], [57, '🌦', '이슬비'], [67, '🌧', '비'], [77, '🌨', '눈'], [82, '🌦', '소나기'], [86, '🌨', '눈 소나기'], [99, '⛈', '뇌우']];
 const wx = code => WX.find(([c]) => code <= c) || WX[3];
+// 여행 날짜가 2주 이내면 그 날짜의 실제 예보, 더 멀면 같은 달의 최근 3년 평균(기온·비 오는 날)
+const FORECAST_DAYS = 14;
+const geo = ap => cached('g:' + ap.en, async () => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(ap.en)}&count=1&language=ko`)).json()).results?.[0] || null);
+function climate(g) {
+  const Y = new Date().getFullYear();
+  return cached(`clim:${g.latitude.toFixed(2)},${g.longitude.toFixed(2)}:${Y}`, async () => {
+    const j = await (await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${g.latitude}&longitude=${g.longitude}&start_date=${Y - 3}-01-01&end_date=${Y - 1}-12-31&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`)).json();
+    const acc = Array.from({ length: 12 }, () => ({ hi: 0, lo: 0, n: 0, rain: 0, mm: 0 }));
+    j.daily.time.forEach((t, i) => {
+      const a = acc[+t.slice(5, 7) - 1], hi = j.daily.temperature_2m_max[i], lo = j.daily.temperature_2m_min[i], p = j.daily.precipitation_sum[i];
+      if (hi == null || lo == null) return;
+      a.hi += hi; a.lo += lo; a.n++; if (p >= 1) a.rain++; a.mm += p || 0;
+    });
+    return acc.map(a => a.n ? { hi: a.hi / a.n, lo: a.lo / a.n, rainDays: a.rain / 3, mm: a.mm / 3 } : null);
+  });
+}
+const packTip = (hi, lo, rain) => [hi < 8 ? '🧥 두꺼운 패딩·장갑' : hi < 16 ? '🧥 코트나 두꺼운 겉옷' : hi < 23 ? '🧶 가벼운 겉옷' : '👕 반팔·자외선 차단',
+  lo < 3 && hi >= 8 ? '아침저녁 쌀쌀함' : '', rain >= 10 ? '☔ 우산 필수' : rain >= 5 ? '🌂 작은 우산' : ''].filter(Boolean).join(' · ');
 async function showWeather() {
-  const c = current, ap = curAp, el = () => current === c && curAp === ap;
-  const box = () => $('#wxBox'), fact = () => $('#wxFact');
+  const c = current, ap = curAp, d1 = S.d1, d2 = S.trip === 'oneway' ? addDays(S.d1, 3) : S.d2;
+  const el = () => current === c && curAp === ap && S.d1 === d1;
+  const box = () => $('#wxBox'), fact = () => $('#wxFact'), city = esc(cityOf(ap));
   try {
-    const g = await cached('g:' + ap.en, async () => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(ap.en)}&count=1&language=ko`)).json()).results?.[0] || null);
-    if (!g) throw 0;
-    const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=5`)).json();
+    const g = await geo(ap); if (!g) throw 0;
+    const base = `https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&timezone=auto`;
+    const away = dday(d1);
+    const [now, fc] = await Promise.all([
+      fetch(`${base}&current=temperature_2m,weather_code`).then(r => r.json()),
+      away <= FORECAST_DAYS ? fetch(`${base}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&start_date=${d1}&end_date=${[d2, addDays(today(), 15)].sort()[0]}`).then(r => r.json()) : null
+    ]);
     if (!el()) return;
-    const [, ic, label] = wx(w.current.weather_code);
-    if (fact()) fact().innerHTML = `<span class="fi">${ic}</span><div><b>지금 ${esc(cityOf(ap))} 날씨</b>${Math.round(w.current.temperature_2m)}° ${label}</div>`;
-    if (box()) box().innerHTML = `<h4>🌤 ${esc(cityOf(ap))} 5일 날씨</h4><div class="wx-days">${w.daily.time.map((t, i) => {
-      const [, di, dl] = wx(w.daily.weather_code[i]), dd = parseD(t);
-      return `<div class="wx-day"><small>${i === 0 ? '오늘' : `${dd.getMonth() + 1}/${dd.getDate()}(${WD[dd.getDay()]})`}</small><span title="${dl}">${di}</span>
-        <b>${Math.round(w.daily.temperature_2m_max[i])}°</b><small>${Math.round(w.daily.temperature_2m_min[i])}°</small></div>`;
-    }).join('')}</div>`;
+    const [, ic, label] = wx(now.current.weather_code);
+    if (fact()) fact().innerHTML = `<span class="fi">${ic}</span><div><b>지금 ${city} 날씨</b>${Math.round(now.current.temperature_2m)}° ${label}</div>`;
+    if (!box()) return;
+    if (fc?.daily) {
+      const t = fc.daily.time.slice(0, 8);
+      box().innerHTML = `<h4>🌤 ${city} 여행 기간 예보</h4><div class="wx-days">${t.map((day, i) => {
+        const [, di, dl] = wx(fc.daily.weather_code[i]), dd = parseD(day), pr = fc.daily.precipitation_probability_max?.[i];
+        return `<div class="wx-day"><small>${dd.getMonth() + 1}/${dd.getDate()}(${WD[dd.getDay()]})</small><span title="${dl}">${di}</span>
+          <b>${Math.round(fc.daily.temperature_2m_max[i])}°</b><small>${Math.round(fc.daily.temperature_2m_min[i])}°${pr != null ? ` · ☔${pr}%` : ''}</small></div>`;
+      }).join('')}</div>${d2 > fc.daily.time.at(-1) ? '<p class="muted small">이후 날짜는 아직 예보가 없어요.</p>' : ''}`;
+    } else {
+      const cl = await climate(g); if (!el()) return;
+      const months = [...new Set([parseD(d1).getMonth(), parseD(d2).getMonth()])];
+      box().innerHTML = `<h4>📊 ${city} 여행 시기 평균 날씨 <small class="muted">최근 3년</small></h4>${months.map(mi => { const s = cl[mi]; if (!s) return '';
+        return `<div class="clim"><b class="clim-m">${mi + 1}월</b>
+          <div class="clim-row"><span><small>평균 최고</small><b>${Math.round(s.hi)}°</b></span><span><small>평균 최저</small><b>${Math.round(s.lo)}°</b></span>
+          <span><small>비 오는 날</small><b>${Math.round(s.rainDays)}일</b></span><span><small>강수량</small><b>${Math.round(s.mm)}mm</b></span></div>
+          <p class="muted small">${packTip(s.hi, s.lo, s.rainDays)}</p></div>`; }).join('')}
+        <p class="muted small">여행 ${FORECAST_DAYS}일 전부터는 실제 날짜 예보로 바뀌어요. (D-${away})</p>`;
+    }
   } catch {
     if (!el()) return;
     fact()?.remove();
@@ -804,7 +882,7 @@ async function showWeather() {
 function renderInfo() {
   const c = current, I = c.info, box = $('#sec-info'); if (!box) return;
   const days = Math.max(1, nights() || 4), ppl = S.adults + S.children;
-  const m = new Date().getMonth() + 1, tripM = parseD(S.d1).getMonth() + 1;
+  const tripM = parseD(S.d1).getMonth() + 1;
   box.innerHTML = `
     <div class="block-title"><h3>📋 여행 정보</h3><small>${esc(cityOf(curAp))} 기준</small></div>
     <div class="info-grid">
@@ -812,7 +890,7 @@ function renderInfo() {
       ${I.best ? `<div class="panel"><h4>📅 추천 시기 · ${esc(I.season)}</h4>
         <div class="months">${Array.from({ length: 12 }, (_, i) => i + 1).map(k =>
           `<span class="mo${I.best.includes(k) ? ' best' : ''}${k === tripM ? ' trip' : ''}" title="${k}월${I.best.includes(k) ? ' 추천' : ''}">${k}</span>`).join('')}</div>
-        <p class="muted small">${I.best.includes(tripM) ? `✅ 여행 날짜(${tripM}월)는 추천 시기예요` : `ℹ️ 여행 날짜(${tripM}월)는 추천 시기가 아니에요`}${tripM !== m ? '' : ''}</p></div>` : ''}
+        <p class="muted small">${I.best.includes(tripM) ? `✅ 여행 날짜(${tripM}월)는 추천 시기예요` : `ℹ️ 여행 날짜(${tripM}월)는 추천 시기가 아니에요`}</p></div>` : ''}
       ${c.cur ? `<div class="panel" id="calcBox"><h4>💱 환율 계산기</h4><p class="muted">환율 불러오는 중…</p></div>` : ''}
       ${I.budget ? `<div class="panel"><h4>💰 1일 예상 경비 <small class="muted">1인 · 숙박 포함</small></h4>
         <div class="budget">${['알뜰', '보통', '여유'].map((l, i) => `<div class="tier${i === 1 ? ' mid' : ''}"><small>${l}</small><b>${I.budget[i]}만원</b></div>`).join('')}</div>
@@ -821,6 +899,9 @@ function renderInfo() {
         <a class="link" href="https://www.0404.go.kr/" target="_blank" rel="noopener">🛡 외교부 해외안전여행에서 여행경보 확인 →</a></div>` : ''}
     </div>`;
   renderCalc();
+  // 제목 옆 배지도 '선택한 여행 날짜' 기준 (오늘 기준과 섞이지 않게)
+  const badge = $('#seasonBadge');
+  if (badge) badge.innerHTML = I.best?.includes(tripM) ? `<span class="now-good">${tripM}월 여행 추천 시기</span>` : '';
   if (current === c) showWeather();
 }
 function renderCalc() {
@@ -843,30 +924,45 @@ function renderCalc() {
 /* ---------- 추천 일정 (♥ 저장한 명소 우선) ---------- */
 function renderPlan() {
   const c = current, box = $('#sec-plan'); if (!box || c.custom) return;
-  const savedNames = savedFor(c), useSaved = savedNames.length > 0;
-  const spots = useSaved ? c.spots.filter(s => savedNames.includes(s.ko)) : c.spots;
+  // 선택한 도착 도시의 명소만 사용 (♥ 저장한 곳이 있으면 그것만)
+  const all = spotsFor(c, curAp), savedNames = savedFor(c);
+  const picked = all.filter(s => savedNames.includes(s.ko)), useSaved = picked.length > 0;
+  const spots = useSaved ? picked : all;
   const days = S.trip === 'oneway' ? 4 : Math.min(10, Math.max(1, nights() + 1));
-  const plan = Array.from({ length: days }, () => []);
-  // 첫날·마지막 날은 이동이 있어 1곳, 나머지는 2곳씩
-  const caps = plan.map((_, i) => days === 1 ? 2 : i === 0 || i === days - 1 ? 1 : 2);
-  let k = 0;
-  for (let i = 0; i < days && k < spots.length; i++) for (let j = 0; j < caps[i] && k < spots.length; j++) plan[i].push(spots[k++]);
-  const rest = spots.slice(k);
+  const near = spots.filter(s => !s.g), groups = [];
+  spots.filter(s => s.g).forEach(s => { const g = groups.find(x => x.g === s.g); g ? g.list.push(s) : groups.push({ g: s.g, list: [s] }); });
+  // 첫날(도착)·마지막 날(출국)은 시내 1곳, 사이 날은 시내 2곳과 근교 당일치기를 번갈아 배치
+  const plan = Array.from({ length: days }, () => ({ list: [], g: null }));
+  let ni = 0, gi = 0;
+  const takeNear = n => { const l = near.slice(ni, ni + n); ni += l.length; return l; };
+  if (days === 1) plan[0].list = takeNear(2);
+  else {
+    plan[0].list = takeNear(1);
+    for (let i = 1; i < days - 1; i++) {
+      const far = gi < groups.length && ((i % 2 === 0) || ni >= near.length);
+      if (far) { plan[i].g = groups[gi].g; plan[i].list = groups[gi++].list; }
+      else plan[i].list = takeNear(2);
+    }
+    plan[days - 1].list = takeNear(1);
+  }
+  const restNear = near.slice(ni), restFar = groups.slice(gi);
   const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n;
   const dayLabel = i => { if (S.trip === 'oneway') return `${i + 1}일차`; const d = parseD(addDays(S.d1, i)); return `${i + 1}일차 · ${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
   const route = list => 'https://www.google.com/maps/dir/' + list.map(s => enc(s.en)).join('/');
-  const text = plan.map((list, i) => `[${dayLabel(i)}] ` + [i === 0 ? '도착·체크인' : '', ...list.map(s => s.ko), i === days - 1 && days > 1 && S.trip !== 'oneway' ? '출국' : ''].filter(Boolean).join(' → ')).join('\n');
+  const leave = i => i === days - 1 && days > 1 && S.trip !== 'oneway';
+  const text = plan.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}] ` + [i === 0 ? `${curAp.name} 도착·체크인` : '', ...p.list.map(s => s.ko), leave(i) ? '출국' : ''].filter(Boolean).join(' → ')).join('\n');
   box.innerHTML = `
-    <div class="block-title"><h3>🗓 ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
-      <small>${useSaved ? `♥ 저장한 명소 ${spots.length}곳 기준` : '추천 명소 기준 · 카드의 ♥로 원하는 명소만 골라 보세요'}</small></div>
-    <div class="plan">${plan.map((list, i) => `
-      <div class="day-card"><div class="day-h"><b>${dayLabel(i)}</b>${list.length > 1 ? `<a class="link sm" href="${route(list)}" target="_blank" rel="noopener">동선 보기 →</a>` : ''}</div>
+    <div class="block-title"><h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
+      <small>${useSaved ? `♥ 저장한 명소 ${spots.length}곳 기준` : `${esc(city)} 명소 기준 · 카드의 ♥로 원하는 곳만 골라 보세요`}</small></div>
+    <div class="plan">${plan.map((p, i) => `
+      <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">동선 보기 →</a>` : ''}</div>
+        ${p.g ? `<p class="day-tag">🚆 근교 당일치기 · ${esc(p.g)}</p>` : ''}
         <ol>${i === 0 ? `<li class="mv">✈ ${esc(curAp.name)} 도착 · ${esc(area || city)} 숙소 체크인</li>` : ''}
-          ${list.map(s => `<li>${esc(s.ko)} <small>${esc(s.d)}</small></li>`).join('')}
-          ${!list.length && !(i === 0) ? '<li class="mv">자유 일정 · 쇼핑, 맛집, 휴식</li>' : ''}
-          ${i === days - 1 && days > 1 && S.trip !== 'oneway' ? `<li class="mv">✈ ${esc(curAp.name)} 출국</li>` : ''}</ol></div>`).join('')}
+          ${p.list.map(s => `<li>${esc(s.ko)} <small>${esc(s.d)}</small></li>`).join('')}
+          ${!p.list.length && i !== 0 && !leave(i) ? '<li class="mv">자유 일정 · 쇼핑, 맛집, 휴식</li>' : ''}
+          ${leave(i) ? `<li class="mv">✈ ${esc(curAp.name)} 출국</li>` : ''}</ol></div>`).join('')}
     </div>
-    ${rest.length ? `<p class="muted small">일정에 다 못 넣은 곳: ${rest.map(s => esc(s.ko)).join(', ')}</p>` : ''}
+    ${restNear.length || restFar.length ? `<p class="muted small">일정이 짧아 빠진 곳: ${[...restNear.map(s => s.ko), ...restFar.map(g => `${g.g}(근교)`)].map(esc).join(', ')} · 날짜를 늘리면 추가돼요</p>` : ''}
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
       <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 전체 동선 지도</a></div>`;
   $('#planCopy').addEventListener('click', async () => {
@@ -889,8 +985,8 @@ function renderTravel() {
   const gf = 'https://www.google.com/travel/flights?hl=ko&curr=KRW&q=' + enc(gfq);
   const skyBase = to ? `https://www.skyscanner.co.kr/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/` : 'https://www.skyscanner.co.kr/';
   const skyQ = `?adultsv2=${adults}${kidAges.length ? '&childrenv2=' + kidAges.join('%7C') : ''}&cabinclass=economy${direct ? '&preferdirects=true' : ''}${oneway ? '&rtn=0' : '&rtn=1'}`;
-  const sky = to ? `${skyBase}${yymmdd(d1)}/${oneway ? '' : yymmdd(d2) + '/'}${skyQ}` : skyBase;
-  const skyMonth = to ? `${skyBase}${d1.slice(2, 7).replace('-', '')}/${oneway ? '' : d2.slice(2, 7).replace('-', '') + '/'}${skyQ}` : skyBase;
+  const sky = aff('skyscanner', to ? `${skyBase}${yymmdd(d1)}/${oneway ? '' : yymmdd(d2) + '/'}${skyQ}` : skyBase);
+  const skyMonth = aff('skyscanner', to ? `${skyBase}${d1.slice(2, 7).replace('-', '')}/${oneway ? '' : d2.slice(2, 7).replace('-', '') + '/'}${skyQ}` : skyBase);
   const nv = to ? `https://flight.naver.com/flights/international/${from}-${to}-${ymd(d1)}${oneway ? '' : `/${to}-${from}-${ymd(d2)}`}?adult=${adults}&child=${children}&infant=${infants}&fareType=Y${direct ? '&isDirect=true' : ''}`
                 : 'https://flight.naver.com/';
 
@@ -916,35 +1012,35 @@ function renderTravel() {
       </div>
       <div class="links">
         <a class="lnk" href="${gf}" target="_blank" rel="noopener"><div><b>Google 항공편</b><span>가격 추이 · 최저가 날짜 그래프</span></div><span class="arr">검색 →</span></a>
-        <a class="lnk" href="${sky}" target="_blank" rel="noopener"><div><b>스카이스캐너</b><span>항공사·여행사 가격 한 번에 비교</span></div><span class="arr">검색 →</span></a>
+        <a class="lnk" href="${sky}" target="_blank" rel="${rel('skyscanner')}"><div><b>스카이스캐너</b><span>항공사·여행사 가격 한 번에 비교</span></div><span class="arr">검색 →</span></a>
         <a class="lnk" href="${nv}" target="_blank" rel="noopener"><div><b>네이버 항공권</b><span>국내 여행사 특가 · 원화 결제</span></div><span class="arr">검색 →</span></a>
-        ${to ? `<a class="lnk soft" href="${skyMonth}" target="_blank" rel="noopener"><div><b>📆 날짜 유연하게</b><span>${parseD(d1).getMonth() + 1}월 전체에서 가장 싼 날 찾기 (스카이스캐너)</span></div><span class="arr">→</span></a>` : ''}
+        ${to ? `<a class="lnk soft" href="${skyMonth}" target="_blank" rel="${rel('skyscanner')}"><div><b>📆 날짜 유연하게</b><span>${parseD(d1).getMonth() + 1}월 전체에서 가장 싼 날 찾기 (스카이스캐너)</span></div><span class="arr">→</span></a>` : ''}
       </div>
     </div>`;
 
   const ageQ = kidAges.map(a => `&age=${a}`).join('');
-  const bk = q => `https://www.booking.com/searchresults.ko.html?ss=${enc(q)}&checkin=${d1}&checkout=${oneway ? addDays(d1, 1) : d2}&group_adults=${adults}&group_children=${kidAges.length}${ageQ}&no_rooms=1&lang=ko`;
-  const ag = q => `https://www.agoda.com/ko-kr/search?textToSearch=${enc(q)}&checkIn=${d1}&los=${n}&adults=${adults}&children=${kidAges.length}${kidAges.length ? '&childages=' + kidAges.join(',') : ''}&rooms=1`;
+  const bk = q => aff('booking', `https://www.booking.com/searchresults.ko.html?ss=${enc(q)}&checkin=${d1}&checkout=${oneway ? addDays(d1, 1) : d2}&group_adults=${adults}&group_children=${kidAges.length}${ageQ}&no_rooms=1&lang=ko`);
+  const ag = q => aff('agoda', `https://www.agoda.com/ko-kr/search?textToSearch=${enc(q)}&checkIn=${d1}&los=${n}&adults=${adults}&children=${kidAges.length}${kidAges.length ? '&childages=' + kidAges.join(',') : ''}&rooms=1`);
   const gh = q => `https://www.google.com/travel/search?hl=ko&curr=KRW&q=${enc(q + ' hotels')}`;
   $('#sec-hotels').innerHTML = `
     <div class="block-title"><h3>🏨 호텔</h3><small>${esc(city)} · ${oneway ? '1박 (편도)' : n + '박'} · ${paxTxt}</small></div>
     <div class="links three">
-      <a class="lnk" href="${bk(ap.en)}" target="_blank" rel="noopener"><div><b>부킹닷컴</b><span>무료 취소 옵션 많음</span></div><span class="arr">→</span></a>
-      <a class="lnk" href="${ag(ap.en)}" target="_blank" rel="noopener"><div><b>아고다</b><span>아시아 숙소 특가</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${bk(ap.en)}" target="_blank" rel="${rel('booking')}"><div><b>부킹닷컴</b><span>무료 취소 옵션 많음</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${ag(ap.en)}" target="_blank" rel="${rel('agoda')}"><div><b>아고다</b><span>아시아 숙소 특가</span></div><span class="arr">→</span></a>
       <a class="lnk" href="${gh(ap.en)}" target="_blank" rel="noopener"><div><b>Google 호텔</b><span>지도로 위치·가격 비교</span></div><span class="arr">→</span></a>
     </div>
     <div class="panel">
       <h4>추천 숙소 지역 · ${esc(city)}</h4>
       <div class="areas">${areasFor(c, ap).map(a => `
         <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
-          <div class="mini"><a href="${bk(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${ag(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="noopener">아고다</a><a href="${gh(a.q || a.n + ' ' + city)}" target="_blank" rel="noopener">Google 호텔</a><a href="${mapLink(a.q || a.n, a.q ? '' : ap.en)}" target="_blank" rel="noopener">지도</a></div></div>`).join('')}
+          <div class="mini"><a href="${bk(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('booking')}">부킹닷컴</a><a href="${ag(a.q || a.n + ' ' + ap.en)}" target="_blank" rel="${rel('agoda')}">아고다</a><a href="${gh(a.q || a.n + ' ' + city)}" target="_blank" rel="noopener">Google 호텔</a><a href="${mapLink(a.q || a.n, a.q ? '' : ap.en)}" target="_blank" rel="noopener">지도</a></div></div>`).join('')}
       </div>
     </div>`;
 }
 $('#main').addEventListener('click', e => {
   const b = e.target.closest('.ap-pick button'); if (!b || !current?.aps) return;
   curAp = current.aps.find(a => a.code === b.dataset.ap);
-  setURL(false); renderTravel(); renderInfo(); renderPlan(); renderMore();
+  stopVideos(); setURL(false); renderSpots(); renderTravel(); renderInfo(); renderPlan(); renderMore();   // 명소·일정·날씨까지 그 도시 기준으로
   $('.ap-pick button.on')?.focus();
 });
 
@@ -952,19 +1048,19 @@ $('#main').addEventListener('click', e => {
 function renderMore() {
   const c = current, box = $('#sec-more'); if (!box) return;
   const city = cityOf(curAp), en = curAp.en;
-  const mrt = q => 'https://www.myrealtrip.com/search?q=' + enc(q);
+  const mrt = q => aff('myrealtrip', 'https://www.myrealtrip.com/search?q=' + enc(q));
   const items = [
-    ['🎟', '투어 · 입장권', '마이리얼트립', mrt(city)],
-    ['🎢', '투어 · 액티비티', '클룩', 'https://www.klook.com/ko/search/result/?query=' + enc(en)],
-    ['📶', 'eSIM · 유심', '마이리얼트립', mrt(`${c.custom ? city : c.ko} eSIM`)],
-    ['🚗', '해외 렌터카', '마이리얼트립', mrt(`${city} 렌터카`)],
-    ['🛡', '여행자보험', '마이리얼트립', mrt('여행자보험')],
+    ['🎟', '투어 · 입장권', '마이리얼트립', mrt(city), 'myrealtrip'],
+    ['🎢', '투어 · 액티비티', '클룩', aff('klook', 'https://www.klook.com/ko/search/result/?query=' + enc(en)), 'klook'],
+    ['📶', 'eSIM · 유심', '마이리얼트립', mrt(`${c.custom ? city : c.ko} eSIM`), 'myrealtrip'],
+    ['🚗', '해외 렌터카', '마이리얼트립', mrt(`${city} 렌터카`), 'myrealtrip'],
+    ['🛡', '여행자보험', '마이리얼트립', mrt('여행자보험'), 'myrealtrip'],
     ['🍜', '맛집 · 지도', 'Google 지도', `https://www.google.com/maps/search/?api=1&query=${enc('restaurants in ' + en)}`],
     ['🗺', '맛집 · 지도', '네이버 지도', `https://map.naver.com/p/search/${enc(city + ' 맛집')}`],
     ['💬', '여행 브이로그', 'YouTube', 'https://www.youtube.com/results?search_query=' + enc(city + ' 여행 브이로그')]
   ];
   box.innerHTML = `<div class="block-title"><h3>🎟 투어 · 여행 준비</h3><small>${esc(city)}</small></div>
-    <div class="more-grid">${items.map(([ic, t, s, u]) => `<a class="more" href="${u}" target="_blank" rel="noopener"><span class="mi">${ic}</span><span><b>${t}</b><small>${s}</small></span></a>`).join('')}</div>`;
+    <div class="more-grid">${items.map(([ic, t, s, u, k]) => `<a class="more" href="${u}" target="_blank" rel="${rel(k || '')}"><span class="mi">${ic}</span><span><b>${t}</b><small>${s}</small></span></a>`).join('')}</div>`;
 }
 
 /* ---------- 탭: 현재 위치 표시 ---------- */
@@ -1021,5 +1117,7 @@ $('#fabSearch').addEventListener('click', () => { scrollTo({ top: 0, behavior: '
 /* =========================================================
    시작
    ========================================================= */
+// 제휴 링크가 하나라도 설정되어 있으면 하단에 제휴 고지 표시
+if (typeof AFFILIATE !== 'undefined' && Object.values(AFFILIATE).some(Boolean)) $('#affNote').hidden = false;
 applyTheme(); syncForm(); updateSavedCount(); route();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
