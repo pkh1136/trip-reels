@@ -21,6 +21,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <link rel="stylesheet" href="style.css">
 <script>
   // 저장된 화면 설정을 그리기 전에 적용 (깜빡임 방지)
@@ -94,6 +95,7 @@
     <span class="v-count" id="vCount"></span>
     <h3 id="vTitle"></h3>
     <p id="vDesc"></p>
+    <p class="v-meta" id="vMeta"></p>
     <div class="v-acts">
       <button type="button" class="v-btn" id="vHeart" aria-pressed="false">♡ 저장</button>
       <button type="button" class="v-btn" id="vMapBtn" aria-pressed="false">📍 지도</button>
@@ -124,6 +126,8 @@
 <script src="config.js"></script>
 <script src="data.js"></script>
 <script src="photos.js"></script>
+<script src="spotinfo.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body>
 </html>

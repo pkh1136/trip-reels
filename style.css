@@ -331,6 +331,33 @@ img.cover-img{width:100%;height:100%;object-fit:cover;display:block}
 .foot a{text-decoration:underline;text-underline-offset:2px}
 .foot .aff{color:var(--text);font-weight:600;background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:10px}
 
+/* ---------- 방문 정보 · 시간표 일정 · 지도 · 먹거리 ---------- */
+.vcard .meta p.info-line{font-size:12px;color:#ffffffe6;margin-top:4px;-webkit-line-clamp:1}
+.vcard .meta p.info-line b{color:#ffd9cc;font-weight:700}
+.v-meta{font-size:13.5px !important;color:#ffd9cc !important}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.map-wrap{margin-bottom:14px}
+.map-days{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.map-days .chip.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.plan-map{height:340px;border-radius:var(--radius);overflow:hidden;background:var(--soft2);z-index:0}
+.pin span{display:inline-block;min-width:34px;padding:2px 6px;border-radius:999px;color:#fff;font:700 11px/18px Pretendard,sans-serif;text-align:center;box-shadow:0 1px 4px #0005;border:2px solid #fff}
+.leaflet-popup-content{font-family:Pretendard,sans-serif;font-size:13px}
+.tl{list-style:none;display:grid;gap:6px}
+.tl li{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:start;background:var(--card);border-radius:10px;padding:8px 10px;font-size:14px}
+.tl .tm{font-size:12px;font-weight:700;color:var(--accent-ink);font-variant-numeric:tabular-nums;padding-top:1px}
+.tl b{font-weight:700}
+.tl small{display:block;font-size:12px;color:var(--muted)}
+.tl small em{font-style:normal;color:var(--warn);font-weight:600}
+.tl li.tl-move{display:block;background:none;padding:0 0 0 52px;font-size:12px;color:var(--muted);position:relative}
+.tl li.tl-move::before{content:"";position:absolute;left:21px;top:-6px;bottom:-6px;border-left:2px dotted var(--line)}
+.tl li.tl-meal{background:var(--warn-soft)}
+.tl li.tl-note,.tl li.tl-free{background:none;border:1px dashed var(--line);color:var(--muted)}
+.tl li.picked{box-shadow:inset 3px 0 0 var(--accent)}
+.food-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:18px}
+.food{background:var(--soft);border-radius:14px;padding:14px 16px}
+.food b{font-size:16px} .food p{font-size:13px;color:var(--muted);margin-top:3px}
+.sub-h{font-size:15px;margin:4px 0 10px}
+
 /* ---------- 릴스 뷰어 ---------- */
 .viewer{position:fixed;inset:0;z-index:60;background:#05070cf2;display:grid;grid-template-columns:1fr minmax(280px,360px);color:#fff}
 .v-stage{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#000;touch-action:pan-y}

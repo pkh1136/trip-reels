@@ -73,6 +73,37 @@ function spotsFor(d, ap) {
   }));
   return spotCache.get(code);
 }
+// 명소 방문 정보(spotinfo.js): 추천 시간대 · 머무는 시간 · 입장 · 메모
+const SLOT_ORDER = { 아침: 0, 오전: 1, 종일: 1, 오후: 2, 저녁: 3, 야간: 4 };
+const SLOT_START = { 아침: 8 * 60, 오전: 9.5 * 60, 종일: 9 * 60, 오후: 13.5 * 60, 저녁: 17.5 * 60, 야간: 19.5 * 60 };
+function spotMeta(s) {
+  const [slot, stay, fee, note] = (s?.en && SPOT_META[s.en] || '').split('|');
+  return { slot: SLOT_ORDER[slot] != null ? slot : '오후', stay: +stay || 1.5, fee: fee || '확인 필요', note: note || '' };
+}
+const spotGeo = s => s?.en && SPOT_GEO[s.en] || null;
+function km(a, b) {
+  const r = x => x * Math.PI / 180, dLa = r(b[0] - a[0]), dLo = r(b[1] - a[1]);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a[0])) * Math.cos(r(b[0])) * Math.sin(dLo / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+const fmtMin = m => m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 >= 5 ? ` ${Math.round(m % 60 / 5) * 5}분` : ''}`;
+// 직선거리로 이동수단·시간을 대략 추정 (도보 4.5km/h, 대중교통 18km/h+대기, 차·기차 65km/h+20분)
+function travel(a, b) {
+  if (!a || !b) return { min: 30, text: '🚇 이동 약 30분' };
+  const d = km(a, b);
+  if (d < 0.15) return null;
+  if (d < 1.2) { const m = Math.max(5, Math.round(d / 4.5 * 60)); return { min: m, text: `🚶 도보 약 ${fmtMin(m)}` }; }
+  if (d < 25) { const m = Math.round(d / 18 * 60 + 12); return { min: m, text: `🚇 대중교통 약 ${fmtMin(m)}` }; }
+  if (d < 450) { const m = Math.round(d / 65 * 60 + 20); return { min: m, text: `🚗 차·기차 약 ${fmtMin(m)}` }; }
+  const m = Math.round(d / 500 * 60 + 150); return { min: m, text: `✈ 항공·장거리 이동 약 ${fmtMin(m)}` };
+}
+// 도시 중심(숙소 기준점) = 시내 명소 좌표의 평균
+function cityCenter(spots) {
+  const pts = spots.filter(s => !s.g).map(spotGeo).filter(Boolean);
+  if (!pts.length) return spots.map(spotGeo).find(Boolean) || null;
+  return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+}
+
 // 제휴 파라미터 (config.js). 값이 있을 때만 링크에 붙이고 rel="sponsored" 표시
 const affOn = key => typeof AFFILIATE !== 'undefined' && !!AFFILIATE[key];
 const aff = (key, url) => affOn(key) ? url + (url.includes('?') ? '&' : '?') + AFFILIATE[key] : url;
@@ -462,7 +493,7 @@ function bindTripCard() {
 /* =========================================================
    여행지 화면
    ========================================================= */
-const SECTIONS = [['spots', '🎬 명소'], ['info', '📋 정보'], ['plan', '🗓 일정'], ['flights', '✈️ 항공'], ['hotels', '🏨 호텔'], ['more', '🎟 투어·준비']];
+const SECTIONS = [['spots', '🎬 명소'], ['info', '📋 정보'], ['plan', '🗓 일정'], ['food', '🍜 먹거리'], ['flights', '✈️ 항공'], ['hotels', '🏨 호텔'], ['more', '🎟 투어·준비']];
 function render(q, word, opts = {}) {
   hideSuggest(); $$('.pop').forEach(p => p.hidden = true); stopVideos();
   const d = typeof q === 'object' ? q : findDest(q);
@@ -511,6 +542,7 @@ function render(q, word, opts = {}) {
     </section>
     <section class="block" id="sec-info"></section>
     ${c.custom ? '' : '<section class="block" id="sec-plan"></section>'}
+    <section class="block" id="sec-food"></section>
     <section class="block" id="sec-flights"></section>
     <section class="block" id="sec-hotels"></section>
     <section class="block" id="sec-more"></section>`;
@@ -519,7 +551,7 @@ function render(q, word, opts = {}) {
   $('#tripSave')?.addEventListener('click', saveTrip);
   $('#reelsBtn').addEventListener('click', () => openViewer(0, true));
   renderSpots(opts.spot);
-  renderInfo(); renderPlan(); renderTravel(); renderMore();   // renderInfo가 날씨도 불러옴
+  renderInfo(); renderPlan(); renderFood(); renderTravel(); renderMore();   // renderInfo가 날씨도 불러옴
   if (!c.custom) showFx();
   setupScrollspy();
   $('#main').scrollIntoView({ behavior: 'smooth' });
@@ -569,8 +601,9 @@ async function renderSpots(focusSpot) {
         ${c.custom ? '' : `<button type="button" class="heart${isSaved(c.ko, s.ko) ? ' on' : ''}" aria-pressed="${isSaved(c.ko, s.ko)}" aria-label="${esc(s.ko)} 보관함에 저장">♥</button>`}
       </div>
       <div class="meta">${s.g ? `<span class="tag">🚆 근교 · ${esc(s.g)}</span>` : ''}<h4>${esc(s.ko)}</h4>${s.d ? `<p>${esc(s.d)}</p>` : ''}
+        ${s.en && SPOT_META[s.en] ? (m => `<p class="info-line">🕐 ${esc(m.slot)} 추천 · ${m.stay}시간 · ${esc(m.fee)}${m.note ? ` · <b>${esc(m.note)}</b>` : ''}</p>`)(spotMeta(s)) : ''}
         <div class="acts"><a class="pill" href="${ytLink(s.en || s.ko)}" target="_blank" rel="noopener">▶ 쇼츠</a>
-        ${s.en ? `<a class="pill" href="${mapLink(s.en, '')}" target="_blank" rel="noopener">📍 지도</a>` : ''}</div></div>
+        ${s.en ? `<a class="pill" href="${mapLink(s.en, '')}" target="_blank" rel="noopener" title="Google 지도에서 위치와 오늘 운영시간 확인">📍 지도·운영시간</a>` : ''}</div></div>
     </article>`).join('');
   const cards = $$('.vcard', grid);
   cards.forEach((el, i) => { el._spot = spots[i]; el._idx = 0; });
@@ -702,6 +735,8 @@ async function showViewer(i) {
   clearTimeout(vTimer); $('#vBar').style.transition = 'none'; $('#vBar').style.width = '0';
   $('#vCount').textContent = `${vIdx + 1} / ${cards.length}`;
   $('#vTitle').textContent = s.ko; $('#vDesc').textContent = s.d || '';
+  const vm = s.en && SPOT_META[s.en] ? spotMeta(s) : null;
+  $('#vMeta').textContent = vm ? `🕐 ${vm.slot} 추천 · 머무는 시간 약 ${vm.stay}시간 · ${vm.fee}${vm.note ? ' · ' + vm.note : ''}` : '';
   $('#vYt').href = ytLink(s.en || s.ko);
   $('#vMap').hidden = true; $('#vMapBtn').setAttribute('aria-pressed', 'false');
   const saved = !current.custom && isSaved(current.ko, s.ko);
@@ -943,7 +978,17 @@ function renderPlan() {
   // 첫날(도착)·마지막 날(출국)은 시내 1곳, 사이 날은 시내 2곳과 근교 당일치기를 번갈아 배치
   const plan = Array.from({ length: days }, () => ({ list: [], g: null }));
   let ni = 0, gi = 0;
-  const takeNear = n => { const l = near.slice(ni, ni + n); ni += l.length; return l; };
+  // 시내 명소 n곳 꺼내기. 테마파크처럼 반나절 이상(6시간+) 걸리는 곳은 그날 하나만
+  const takeNear = n => {
+    const l = [];
+    while (l.length < n && ni < near.length) {
+      const s = near[ni], long = spotMeta(s).stay >= 6;
+      if (long && l.length) break;
+      l.push(s); ni++;
+      if (long) break;
+    }
+    return l;
+  };
   if (days === 1) plan[0].list = takeNear(2);
   else {
     plan[0].list = takeNear(1);
@@ -955,29 +1000,137 @@ function renderPlan() {
     plan[days - 1].list = takeNear(1);
   }
   const restNear = near.slice(ni), restFar = groups.slice(gi);
-  const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n;
+  const city = cityOf(curAp), area = areasFor(c, curAp)[0]?.n || city;
   const dayLabel = i => { if (S.trip === 'oneway') return `${i + 1}일차`; const d = parseD(addDays(S.d1, i)); return `${i + 1}일차 · ${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
   const route = list => 'https://www.google.com/maps/dir/' + list.map(s => enc(s.en)).join('/');
   const leave = i => i === days - 1 && days > 1 && S.trip !== 'oneway';
-  const text = plan.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}] ` + [i === 0 ? `${curAp.name} 도착·체크인` : '', ...p.list.map(s => s.ko), leave(i) ? '출국' : ''].filter(Boolean).join(' → ')).join('\n');
+
+  // 시간표 만들기: 추천 시간대 순서로 정렬 → 이동시간 → 머무는 시간 → 점심·저녁 끼워 넣기
+  const center = cityCenter(all), foods = cityFood(curAp).food;
+  let foodIdx = 0;
+  const nextFood = () => foods.length ? foods[foodIdx++ % foods.length] : null;
+  const timeline = plan.map((p, i) => {
+    const rows = [], first = i === 0, isLast = leave(i);
+    let t = first ? 15 * 60 : p.g ? 8 * 60 : 9 * 60, prev = center, lunch = first, dinner = false;
+    const meal = kind => { const f = nextFood(); rows.push({ kind: 'meal', time: t, text: `${kind === 'lunch' ? '🍜 점심' : '🍽 저녁'}${f ? ' · ' + f.n : ''}`, near: rows.filter(r => r.spot).at(-1)?.spot }); t += kind === 'lunch' ? 60 : 75; kind === 'lunch' ? lunch = true : dinner = true; };
+    if (first) rows.push({ kind: 'note', time: 14 * 60, text: `✈ ${curAp.name} 도착 · ${area} 숙소 체크인` });
+    if (p.g) rows.push({ kind: 'note', time: t, text: `🚆 근교 당일치기 · ${p.g}(으)로 출발` });
+    const items = [...p.list].sort((a, b) => SLOT_ORDER[spotMeta(a).slot] - SLOT_ORDER[spotMeta(b).slot]);
+    items.forEach(s => {
+      const m = spotMeta(s), mv = travel(prev, spotGeo(s)), mvMin = mv?.min || 0;
+      const free = () => rows.push({ kind: 'free', time: t, text: '☕ 자유 시간 · 쇼핑, 카페, 숙소 휴식' });
+      if (!lunch && t >= 11 * 60 && t <= 14.5 * 60) meal('lunch');
+      const want = SLOT_START[m.slot];
+      // 저녁·야간 명소는 그 시간에 맞춰 출발: 남는 시간엔 점심·자유 시간·저녁을 먼저 넣고, 이동은 그 뒤에
+      if ((m.slot === '저녁' || m.slot === '야간') && t + mvMin < want) {
+        if (!lunch && !first && t <= 14.5 * 60) { if (12 * 60 - t >= 90) free(); t = Math.max(t, 12 * 60); meal('lunch'); }
+        if (!dinner && want >= 18 * 60 && t <= 18.5 * 60) { if (18 * 60 - t >= 90) free(); t = Math.max(t, 18 * 60); meal('dinner'); }
+        if (want - mvMin - t >= 90) free();
+        t = Math.max(t, want - mvMin);
+      }
+      if (mv) { rows.push({ kind: 'move', text: mv.text }); t += mvMin; }
+      // 테마파크처럼 점심시간을 통째로 걸치는 곳은 안에서 점심
+      const inside = !lunch && m.stay >= 5 && t < 12 * 60 && t + m.stay * 60 > 13 * 60;
+      if (inside) lunch = true;
+      rows.push({ kind: 'spot', time: t, spot: s, m, inside });
+      t += Math.round(m.stay * 60); prev = spotGeo(s) || prev;
+    });
+    // 일정이 일찍 끝나면 점심 → 맛집 거리·시장 자유 시간으로 채움
+    const streets = cityFood(curAp).street;
+    if (!lunch && !isLast && !first && t <= 14.5 * 60) { t = Math.max(t, 12 * 60); meal('lunch'); }
+    if (!isLast && !p.g && items.length && t < 16 * 60) {   // 근교 날은 그 도시 맛집 거리를 추천하지 않음
+      const st = streets.length ? streets[i % streets.length] : null;
+      rows.push({ kind: 'free', time: t, text: st ? `☕ 자유 시간 · ${st.n} 구경 (${st.d})` : '☕ 자유 시간 · 쇼핑, 카페, 산책' });
+      t = 17 * 60;
+    }
+    if (p.g) { const back = travel(prev, center); if (back) { rows.push({ kind: 'move', text: back.text.replace(/^(\S+)/, '$1 숙소로') }); t += back.min; } }
+    if (!dinner && !isLast && t <= 22 * 60) { t = Math.max(t, 18.5 * 60); meal('dinner'); }
+    if (!items.length && !first && !isLast) rows.push({ kind: 'free', time: 10 * 60, text: '☕ 자유 일정 · 쇼핑, 맛집, 휴식' });
+    if (isLast) rows.push({ kind: 'note', time: Math.max(t, 11 * 60), text: `✈ ${curAp.name}(으)로 이동 · 출국` });
+    return { ...p, rows };
+  });
+  const hm = m => `${pad(Math.floor(m / 60) % 24)}:${pad(Math.round(m % 60))}`;
+  const nearMap = s => mapLink('restaurants near ' + (s?.en || curAp.en));
+  const text = timeline.map((p, i) => `[${dayLabel(i)}${p.g ? ' · 근교 ' + p.g : ''}]\n` + p.rows.filter(r => r.kind !== 'move').map(r =>
+    `${r.time != null ? hm(r.time) + ' ' : ''}${r.spot ? r.spot.ko : r.text}`).join('\n')).join('\n\n');
   box.innerHTML = `
     <div class="block-title"><h3>🗓 ${esc(city)} ${S.trip === 'oneway' ? '추천 일정 (예시 4일)' : `${nights()}박 ${days}일 추천 일정`}</h3>
       <small>${useSaved ? `♥ 저장한 ${picked.length}곳을 먼저 넣고 남는 날은 추천 명소로 채웠어요` : `${esc(city)} 추천 명소 기준 · 카드의 ♥로 꼭 갈 곳을 골라 보세요`}</small></div>
-    <div class="plan">${plan.map((p, i) => `
-      <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">동선 보기 →</a>` : ''}</div>
-        ${p.g ? `<p class="day-tag">🚆 근교 당일치기 · ${esc(p.g)}</p>` : ''}
-        <ol>${i === 0 ? `<li class="mv">✈ ${esc(curAp.name)} 도착 · ${esc(area || city)} 숙소 체크인</li>` : ''}
-          ${p.list.map(s => `<li${isPicked(s) ? ' class="picked"' : ''}>${isPicked(s) ? '<span class="pk" aria-label="저장한 곳">♥</span> ' : ''}${esc(s.ko)} <small>${esc(s.d)}</small></li>`).join('')}
-          ${!p.list.length && i !== 0 && !leave(i) ? '<li class="mv">자유 일정 · 쇼핑, 맛집, 휴식</li>' : ''}
-          ${leave(i) ? `<li class="mv">✈ ${esc(curAp.name)} 출국</li>` : ''}</ol></div>`).join('')}
+    <div class="map-wrap" id="planMapWrap">
+      <div class="map-days" role="group" aria-label="지도에 표시할 날짜"><button type="button" class="chip sm on" data-day="all">전체</button>${timeline.map((p, i) =>
+        p.rows.some(r => r.spot && spotGeo(r.spot)) ? `<button type="button" class="chip sm" data-day="${i}"><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${i + 1}일차</button>` : '').join('')}</div>
+      <div class="plan-map" id="planMap" role="img" aria-label="${esc(city)} 일정 지도"></div>
     </div>
+    <div class="plan">${timeline.map((p, i) => `
+      <div class="day-card${p.g ? ' far' : ''}"><div class="day-h"><b><i class="dot" style="background:${DAY_COLORS[i % DAY_COLORS.length]}"></i>${dayLabel(i)}</b>${p.list.length > 1 ? `<a class="link sm" href="${route(p.list)}" target="_blank" rel="noopener">길찾기 →</a>` : ''}</div>
+        ${p.g ? `<p class="day-tag">🚆 근교 당일치기 · ${esc(p.g)}</p>` : ''}
+        <ol class="tl">${p.rows.map(r => r.kind === 'move' ? `<li class="tl-move">${esc(r.text)}</li>`
+          : r.kind === 'spot' ? `<li class="tl-spot${isPicked(r.spot) ? ' picked' : ''}"><span class="tm">${hm(r.time)}</span><div>${isPicked(r.spot) ? '<span class="pk" aria-label="저장한 곳">♥</span> ' : ''}<b>${esc(r.spot.ko)}</b>
+              <small>${r.m.stay}시간 · ${esc(r.m.fee)}${r.m.note ? ` · <em>${esc(r.m.note)}</em>` : ''}${r.inside ? ' · 점심은 안에서' : ''}</small></div></li>`
+          : r.kind === 'meal' ? `<li class="tl-meal"><span class="tm">${hm(r.time)}</span><div>${esc(r.text)} <a class="link sm" href="${nearMap(r.near)}" target="_blank" rel="noopener">주변 맛집</a></div></li>`
+          : `<li class="tl-${r.kind}"><span class="tm">${r.time != null ? hm(r.time) : ''}</span><div>${esc(r.text)}</div></li>`).join('')}</ol></div>`).join('')}
+    </div>
+    <p class="muted small">⏱ 이동시간은 직선거리로 계산한 대략치이고, 운영시간·요금은 명소 카드의 '지도·운영시간'에서 확인하세요.</p>
     ${restNear.length || restFar.length ? `<p class="muted small">시간이 되면 더 둘러볼 곳: ${[...restNear.map(s => s.ko), ...restFar.map(g => `${g.g}(근교)`)].map(esc).join(', ')}</p>` : ''}
     <div class="row-btns"><button type="button" class="btn ghost" id="planCopy">📋 일정 복사</button>
-      <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 전체 동선 지도</a></div>`;
+      <a class="btn ghost" href="${route(spots)}" target="_blank" rel="noopener">🗺 Google 지도로 보기</a></div>`;
   $('#planCopy').addEventListener('click', async () => {
-    const t = `${c.ko} 여행 일정 (트립릴스)\n${text}\n${location.href}`;
+    const t = `${c.ko} 여행 일정 (트립릴스)\n\n${text}\n\n${location.href}`;
     try { await navigator.clipboard.writeText(t); toast('일정을 복사했어요'); } catch { prompt('아래 내용을 복사하세요', t); }
   });
+  drawPlanMap(timeline, center);
+}
+
+/* ---------- 일정 지도 (Leaflet + OpenStreetMap) ---------- */
+const DAY_COLORS = ['#ff6b4a', '#2f80ed', '#12a150', '#a855f7', '#f59e0b', '#0ea5e9', '#e11d48', '#64748b', '#14b8a6', '#8b5cf6'];
+let planMap = null;
+function drawPlanMap(timeline, center) {
+  const wrap = $('#planMapWrap');
+  if (typeof L === 'undefined' || !center) { wrap.hidden = true; return; }   // 지도 라이브러리를 못 불러오면 숨김
+  planMap?.remove();
+  planMap = L.map('planMap', { scrollWheelZoom: false, attributionControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(planMap);
+  const layers = timeline.map((p, i) => {
+    const color = DAY_COLORS[i % DAY_COLORS.length], pts = [];
+    const group = L.layerGroup();
+    p.rows.filter(r => r.spot && spotGeo(r.spot)).forEach((r, k) => {
+      const ll = spotGeo(r.spot); pts.push(ll);
+      L.marker(ll, { icon: L.divIcon({ className: 'pin', html: `<span style="background:${color}">${i + 1}-${k + 1}</span>`, iconSize: [34, 22], iconAnchor: [17, 11] }) })
+        .bindPopup(`<b>${esc(r.spot.ko)}</b><br>${i + 1}일차 ${pad(Math.floor(r.time / 60))}:${pad(r.time % 60)} · ${r.m.stay}시간`).addTo(group);
+    });
+    if (pts.length > 1) L.polyline(pts, { color, weight: 3, opacity: .8, dashArray: p.g ? '6 6' : null }).addTo(group);
+    return { group, pts };
+  });
+  const show = sel => {
+    layers.forEach((l, i) => (sel === 'all' || +sel === i) ? l.group.addTo(planMap) : l.group.remove());
+    const pts = (sel === 'all' ? layers.flatMap(l => l.pts) : layers[+sel]?.pts) || [];
+    pts.length ? planMap.fitBounds(pts, { padding: [30, 30], maxZoom: 15 }) : planMap.setView(center, 12);
+    $$('#planMapWrap [data-day]').forEach(b => b.classList.toggle('on', b.dataset.day === String(sel)));
+  };
+  $$('#planMapWrap [data-day]').forEach(b => b.addEventListener('click', () => show(b.dataset.day)));
+  // 첫날 시내 일정이 지도 가운데 오도록: 근교가 있으면 '전체'가 너무 넓어져서 1일차부터 보여줌
+  const farAway = layers.flatMap(l => l.pts).some(ll => km(ll, center) > 60);
+  show(farAway && layers[0]?.pts.length ? 0 : 'all');
+  setTimeout(() => planMap?.invalidateSize(), 200);
+}
+
+/* ---------- 먹거리 ---------- */
+function cityFood(ap) {
+  const f = CITY_FOOD[SPOT_ALIAS[ap?.code] || ap?.code];
+  const split = (s, keys) => (s || '').split(';').filter(Boolean).map(x => { const v = x.split('|'); return Object.fromEntries(keys.map((k, i) => [k, v[i]])); });
+  return { food: split(f?.food, ['n', 'd']), street: split(f?.street, ['n', 'd', 'q']) };
+}
+function renderFood() {
+  const c = current, box = $('#sec-food'); if (!box) return;
+  const ap = curAp, city = cityOf(ap), f = cityFood(ap);
+  const gm = q => 'https://www.google.com/maps/search/?api=1&query=' + enc(q);
+  const nv = q => 'https://map.naver.com/p/search/' + enc(q);
+  box.innerHTML = `<div class="block-title"><h3>🍜 ${esc(city)} 먹거리</h3><small>대표 음식과 맛집 거리</small></div>
+    ${f.food.length ? `<div class="food-grid">${f.food.map(x => `<div class="food"><b>${esc(x.n)}</b><p>${esc(x.d)}</p>
+      <div class="mini"><a href="${gm(x.n + ' ' + ap.en)}" target="_blank" rel="noopener">Google 지도</a><a href="${nv(city + ' ' + x.n)}" target="_blank" rel="noopener">네이버 지도</a></div></div>`).join('')}</div>` : ''}
+    ${f.street.length ? `<h4 class="sub-h">🏮 맛집 거리 · 시장</h4><div class="areas">${f.street.map(x => `<div class="area"><b>${esc(x.n)}</b><p>${esc(x.d)}</p>
+      <div class="mini"><a href="${gm(x.q)}" target="_blank" rel="noopener">지도에서 보기</a><a href="${gm('restaurants near ' + x.q)}" target="_blank" rel="noopener">주변 맛집</a></div></div>`).join('')}</div>` : ''}
+    ${!f.food.length && !f.street.length ? `<div class="more-grid"><a class="more" href="${gm('restaurants in ' + ap.en)}" target="_blank" rel="noopener"><span class="mi">🍜</span><span><b>${esc(city)} 맛집</b><small>Google 지도</small></span></a></div>` : ''}`;
 }
 
 /* ---------- 항공편 · 호텔 ---------- */
@@ -1049,7 +1202,7 @@ function renderTravel() {
 $('#main').addEventListener('click', e => {
   const b = e.target.closest('.ap-pick button'); if (!b || !current?.aps) return;
   curAp = current.aps.find(a => a.code === b.dataset.ap);
-  stopVideos(); setURL(false); renderSpots(); renderTravel(); renderInfo(); renderPlan(); renderMore();   // 명소·일정·날씨까지 그 도시 기준으로
+  stopVideos(); setURL(false); renderSpots(); renderTravel(); renderInfo(); renderPlan(); renderFood(); renderMore();   // 명소·일정·날씨·먹거리까지 그 도시 기준으로
   $('.ap-pick button.on')?.focus();
 });
 
