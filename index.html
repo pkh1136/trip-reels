@@ -644,6 +644,88 @@ const AIRPORTS = {
 };
 DESTS.forEach(d => d.aps = (AIRPORTS[d.ko]||`${d.iata}|${d.city}|${d.cityEn}|${d.flight}`).split(';')
   .map(s => { const [code, name, en, time] = s.split('|'); return {code, name, en, time}; }));
+/* 공항(도시)별 추천 숙소 지역: 이름|설명|호텔 검색어(생략 시 "이름 + 도시")
+   없으면 대표 공항과 같은 도시일 때 국가 기본 지역을 사용 */
+const AREAS = {
+  KIX:"난바|도톤보리·간사이공항 직행 열차|Namba Osaka;우메다|교통 허브, 쇼핑·전망대|Umeda Osaka;신사이바시|쇼핑 거리, 번화가 도보권|Shinsaibashi;교토역 주변|교토 사찰 여행 거점|Kyoto Station",
+  FUK:"하카타역|공항 지하철 5분, 교통 중심|Hakata Station;텐진|쇼핑·야타이 포장마차|Tenjin Fukuoka;나카스|강변 야경과 포장마차 거리|Nakasu Fukuoka",
+  CTS:"스스키노|맛집·야경 번화가|Susukino;삿포로역|공항 열차 직결, 이동 편리|Sapporo Station;오타루|운하와 유리공예 마을|Otaru",
+  OKA:"나하 국제거리|쇼핑·맛집, 모노레일|Kokusai Street Naha;온나손|해변 리조트 밀집|Onna Okinawa;차탄|아메리칸 빌리지, 선셋 비치|Chatan Okinawa",
+  NGO:"나고야역|교통·쇼핑 중심|Nagoya Station;사카에|번화가, 오아시스21|Sakae Nagoya",
+  NCE:"니스 구시가|골목 시장과 맛집|Vieux Nice;프롬나드 데 장글레|해변 산책로 앞|Promenade des Anglais;칸|영화제의 도시|Cannes",
+  MXP:"두오모 주변|명소 도보권|Duomo Milan;밀라노 중앙역|기차 이동 편리|Milano Centrale;코모 호수|호숫가 휴양|Lake Como",
+  VCE:"산마르코|광장·운하 중심|San Marco Venice;리알토|다리 주변 골목|Rialto Venice;메스트레|본섬 기차 10분, 가성비|Mestre",
+  EDI:"올드타운|로열 마일·에든버러 성|Old Town Edinburgh;뉴타운|프린세스 스트리트 쇼핑|New Town Edinburgh",
+  MAD:"솔 광장|마드리드 중심, 도보 여행|Puerta del Sol;그란 비아|쇼핑·뮤지컬 거리|Gran Via Madrid;살라망카|고급 쇼핑가, 조용함|Salamanca Madrid",
+  ZRH:"취리히 중앙역|공항 열차 10분, 교통 거점|Zurich HB;인터라켄|융프라우 지역 거점|Interlaken;루체른 구시가|호수뷰, 이동 편리|Lucerne;체르마트|마테호른 뷰 숙소|Zermatt",
+  GVA:"제네바 호숫가|대분수 뷰|Geneva lakefront;코르나뱅역|기차 이동 편리|Cornavin Geneva;몽트뢰|레만 호수·시옹성|Montreux",
+  ATH:"플라카|아크로폴리스 아래 구시가|Plaka Athens;신타그마|공항철도·교통 중심|Syntagma Athens;모나스티라키|벼룩시장·루프탑 뷰|Monastiraki",
+  JTR:"이아|석양뷰 동굴 숙소|Oia Santorini;피라|버스 허브, 상대적 가성비|Fira Santorini;이메로비글리|칼데라 절경, 조용함|Imerovigli",
+  IST:"술탄아흐메트|구시가 명소 도보권|Sultanahmet;탁심·베이오을루|번화가, 맛집·야경|Taksim;카라쾨이|감성 카페, 보스포루스 뷰|Karakoy",
+  ASR:"괴레메|동굴 호텔, 열기구 출발지|Goreme;우치히사르|성채 마을 전망|Uchisar;위르귀프|와이너리, 조용한 마을|Urgup",
+  AYT:"칼레이치|성벽 안 구시가|Kaleici Antalya;라라 해변|대형 올인클루시브|Lara Antalya;벨렉|골프·리조트 단지|Belek",
+  LAX:"산타모니카|해변·부두 앞|Santa Monica;할리우드|명예의 거리·투어|Hollywood;다운타운 LA|미술관·공연장|Downtown Los Angeles",
+  SFO:"유니언 스퀘어|쇼핑·케이블카 출발|Union Square San Francisco;피셔맨스 워프|바다 뷰, 알카트라즈 페리|Fisherman's Wharf;소마|모던 호텔, 미술관|SoMa San Francisco",
+  LAS:"스트립 중심|대형 카지노 호텔|Las Vegas Strip;다운타운 프리몬트|전구 쇼, 가성비|Fremont Street Las Vegas",
+  SEA:"다운타운|파이크 플레이스 마켓 도보권|Downtown Seattle;사우스 레이크 유니언|조용한 신시가|South Lake Union",
+  HNL:"와이키키|해변 앞 호텔 밀집|Waikiki;알라모아나|쇼핑센터·비치파크|Ala Moana;코 올리나|조용한 리조트 라군|Ko Olina",
+  GUM:"투몬 베이|해변 리조트·쇼핑 중심|Tumon Bay;하갓냐|수도, 차모로 야시장|Hagatna",
+  YVR:"다운타운|쇼핑·맛집, 이동 편리|Downtown Vancouver;개스타운|증기시계, 감성 거리|Gastown;예일타운|세련된 레스토랑과 바|Yaletown",
+  YYZ:"다운타운 토론토|CN 타워·쇼핑|Downtown Toronto;나이아가라 폭포|폭포 뷰 호텔|Niagara Falls Ontario",
+  YYC:"밴프 타운|로키 여행 거점|Banff;캔모어|가성비 산악 마을|Canmore;레이크 루이스|호숫가 샤토|Lake Louise",
+  MEL:"CBD|트램 무료 구역, 골목 카페|Melbourne CBD;사우스뱅크|강변 야경|Southbank Melbourne;세인트킬다|해변·펭귄|St Kilda",
+  BNE:"사우스뱅크|인공 해변·문화지구|South Bank Brisbane;서퍼스 파라다이스|골드코스트 해변|Surfers Paradise",
+  CNS:"케언즈 시티|리프 투어 출발점|Cairns City;팜 코브|조용한 해변 리조트|Palm Cove;포트 더글러스|고급 휴양 마을|Port Douglas",
+  HKT:"빠통|나이트라이프 중심|Patong;카타·카론|조용한 해변|Kata Beach;푸켓 올드타운|컬러풀한 구시가|Phuket Old Town",
+  CNX:"올드시티|사원·선데이마켓 도보권|Chiang Mai Old City;님만해민|감성 카페 거리|Nimmanhaemin;나이트 바자|야시장 주변|Night Bazaar Chiang Mai",
+  HAN:"호안끼엠 구시가|맛집·야시장 도보권|Hoan Kiem;서호|조용한 호숫가|West Lake Hanoi;하롱베이|크루즈 출발지|Ha Long",
+  SGN:"1군|벤탄시장·여행자 거리|District 1 Ho Chi Minh;3군|로컬 맛집, 조용함|District 3 Ho Chi Minh;타오디엔|강변 카페, 감성 숙소|Thao Dien",
+  CXR:"나트랑 해변|시내 해변 앞 호텔|Nha Trang beach;깜란|공항 근처 대형 리조트|Cam Ranh",
+  PQC:"즈엉동|야시장·시내|Duong Dong;사오 비치 (남부)|하얀 모래 해변|Sao Beach Phu Quoc;그랜드 월드 (북부)|리조트·빈원더스|Grand World Phu Quoc",
+  KHH:"아이허(사랑의 강)|강변 야경|Love River Kaohsiung;보얼 예술특구|창고 개조 문화지구|Pier-2 Art Center;컨딩|남단 해변 휴양지|Kenting",
+  PVG:"와이탄|황푸강 야경|The Bund Shanghai;난징동루|쇼핑 거리|Nanjing Road Shanghai;신톈디|감성 골목·레스토랑|Xintiandi",
+  DYG:"장가계 시내|공항·교통 편리|Zhangjiajie city;우링위안|국립공원 입구|Wulingyuan",
+  CAN:"톈허|쇼핑·비즈니스 중심|Tianhe Guangzhou;베이징루|보행자 거리·먹거리|Beijing Road Guangzhou",
+  CGK:"수디르만·SCBD|고급 호텔·쇼핑몰|Sudirman Jakarta;끄망|카페·나이트라이프|Kemang Jakarta",
+  CEB:"막탄|리조트 밀집, 공항 근처|Mactan;세부 시티|쇼핑몰·가성비|Cebu City;모알보알|정어리 떼 스노클링|Moalboal",
+  MNL:"마카티|안전한 비즈니스 지구|Makati;BGC|세련된 쇼핑·맛집|Bonifacio Global City;파사이|공항·몰 오브 아시아|Pasay",
+  KLO:"화이트비치 스테이션 2|번화가 중심|Station 2 Boracay;스테이션 1|고운 모래, 고급 리조트|Station 1 Boracay;불라복 비치|카이트서핑, 조용함|Bulabog Beach",
+  TAG:"알로나 비치|레스토랑·다이빙 중심|Alona Beach;팡라오|조용한 리조트|Panglao",
+  KUL:"부킷 빈탕|쇼핑·먹자골목|Bukit Bintang;KLCC|트윈타워 뷰 호텔|KLCC;KL 센트럴|공항철도 직결|KL Sentral",
+  BKI:"코타키나발루 시내|워터프런트 야시장|Kota Kinabalu city;탄중아루|석양 해변|Tanjung Aru;투아란|대형 해변 리조트|Tuaran",
+  PEN:"조지타운|벽화 골목 구시가|George Town Penang;바투 페링기|해변 리조트·야시장|Batu Ferringhi",
+  VTE:"메콩 강변|야시장 도보권|Vientiane riverside;남푸 광장|시내 중심, 카페|Nam Phou Vientiane;방비엥|블루라군·액티비티|Vang Vieng",
+  LPQ:"구시가|탁발 행렬·야시장|Luang Prabang old town;메콩 강변|강뷰 숙소|Mekong Luang Prabang",
+  DEL:"코넛 플레이스|델리 중심가|Connaught Place;파하르간지|배낭여행자 거리, 가성비|Paharganj;에어로시티|공항 근처 호텔|Aerocity Delhi",
+  BOM:"콜라바|인도문·타지호텔|Colaba;반드라|트렌디한 카페 거리|Bandra;주후|해변 앞|Juhu",
+  AUH:"코르니쉬|해안 산책로|Corniche Abu Dhabi;사디야트 섬|루브르 아부다비·해변|Saadiyat Island;야스 섬|테마파크·F1 서킷|Yas Island",
+  FRA:"중앙역 주변|공항·기차 이동 편리|Frankfurt Hauptbahnhof;뢰머 구시가|광장·대성당 도보권|Romer Frankfurt;작센하우젠|사과주 선술집 골목|Sachsenhausen Frankfurt",
+  MUC:"마리엔 광장|구시가 중심|Marienplatz Munich;뮌헨 중앙역|교통 편리|Munich Hauptbahnhof;퓌센|노이슈반슈타인 성 근처|Fussen",
+  BER:"미테|박물관섬·명소 밀집|Mitte Berlin;크로이츠베르크|힙한 로컬 동네|Kreuzberg;샤를로텐부르크|쇼핑가·궁전|Charlottenburg",
+  VIE:"인네레 슈타트|빈 1구, 명소 도보권|Innere Stadt Vienna;마리아힐퍼 거리|쇼핑가, 가성비|Mariahilfer Strasse;빈 중앙역|기차 이동 편리|Wien Hauptbahnhof",
+  SZG:"잘츠부르크 구시가|모차르트 생가 주변|Salzburg Altstadt;할슈타트|호숫가 마을 숙박|Hallstatt",
+  ZAG:"반 옐라치치 광장|자그레브 중심|Ban Jelacic Square;플리트비체|국립공원 입구 숙소|Plitvice",
+  DBV:"두브로브니크 구시가|성벽 안 숙소|Dubrovnik Old Town;라파드|해변, 조용함|Lapad Dubrovnik",
+  SPU:"스플리트 구시가|궁전 안 골목|Split Old Town;흐바르|섬 휴양|Hvar Town",
+  LIS:"바이샤·시아두|중심가, 트램·쇼핑|Baixa Lisbon;알파마|전망대와 파두 골목|Alfama;신트라|궁전 마을 숙박|Sintra",
+  OPO:"히베이라|강변 야경|Ribeira Porto;볼량|시장·카페 중심가|Bolhao Porto;빌라 노바 드 가이아|와이너리 강 건너편|Vila Nova de Gaia",
+  OSL:"오슬로 중앙역|교통 거점|Oslo Central Station;아케르 브뤼게|항구 레스토랑가|Aker Brygge",
+  BGO:"브뤼겐|피오르 투어 출발점|Bryggen Bergen;베르겐 중심가|어시장·케이블카|Bergen city centre",
+  TOS:"트롬쇠 시내|오로라 투어 픽업|Tromso;크발뢰야 섬|오로라 관측 오두막|Kvaloya",
+  AKL:"오클랜드 CBD|항구·쇼핑 중심|Auckland CBD;바이어덕트 하버|요트 정박지 레스토랑|Viaduct Harbour;와이헤케 섬|와이너리 섬|Waiheke Island",
+  ZQN:"퀸스타운 시내|레포츠 중심|Queenstown;와나카|호숫가 조용한 마을|Wanaka;테아나우|밀포드 사운드 거점|Te Anau",
+  CHC:"크라이스트처치 시내|정원의 도시|Christchurch Central;테카포|별빛 호숫가|Lake Tekapo",
+  MEX:"로마·콘데사|감성 카페·맛집 동네|Roma Norte Mexico City;센트로 역사지구|소칼로 광장 주변|Centro Historico Mexico City;폴랑코|고급 쇼핑가|Polanco",
+  CUN:"칸쿤 호텔존|해변 리조트 밀집|Cancun Hotel Zone;플라야 델 카르멘|5번가 보행자 거리|Playa del Carmen;툴룸|정글 부티크 호텔|Tulum",
+  LIM:"미라플로레스|안전한 해안가|Miraflores Lima;바랑코|예술가 동네|Barranco Lima",
+  CUZ:"아르마스 광장|구시가 중심|Cusco Plaza de Armas;성스러운 계곡|고도 낮아 고산병 완화|Urubamba;아구아스칼리엔테스|마추픽추 입구 마을|Aguas Calientes"
+};
+function areasFor(base, ap){
+  if (AREAS[ap.code]) return AREAS[ap.code].split(';').map(s => { const [n, d, q] = s.split('|'); return {n, d, q}; });
+  if (!base.aps || ap.en === base.aps[0].en) return base.areas;          // 대표 도시와 같은 도시 (예: 나리타, 쑹산)
+  return [{n: ap.name.split(' ')[0] + ' 시내', d: '주요 명소와 교통이 편리한 중심가', q: ap.en}];
+}
+
 // 도시 이름으로 검색했으면 그 도시의 공항을 기본 선택
 const airportFor = (d, word) => (word && d.aps.find(a => norm(a.name).includes(norm(word)) || norm(a.en) === norm(word))) || d.aps[0];
 
@@ -869,8 +951,8 @@ function renderTravel(c){
   const d1 = $('#d1').value, d2 = $('#d2').value, pax = $('#pax').value;
   const ap = curAp || { code: c.iata, name: c.city, en: c.cityEn, time: c.flight };
   const to = ap.code;
-  const base = c;   // 추천 숙소 지역은 대표 도시 기준
-  c = { ...c, city: ap.name.replace(/ \(.*\)$/,''), cityEn: ap.en, flight: ap.time };   // 선택한 공항 기준으로 항공·호텔 검색
+  const base = c;   // 국가 원본 정보 (공항별 숙소 지역이 없을 때 사용)
+  c = { ...c, city: ap.name.split(' ')[0], cityEn: ap.en, flight: ap.time };   // 선택한 공항 기준으로 항공·호텔 검색
   const nights = Math.max(1, Math.round((new Date(d2)-new Date(d1))/864e5));
 
   const gf = 'https://www.google.com/travel/flights?hl=ko&curr=KRW&q=' + enc(`Flights to ${to||c.cityEn} from ${from} on ${d1} through ${d2} ${pax} adults`);
@@ -918,10 +1000,10 @@ function renderTravel(c){
       <a class="lnk" href="${gh(c.cityEn)}" target="_blank" rel="noopener"><div><b>Google 호텔</b><span>지도로 위치·가격 비교</span></div><span class="arr">→</span></a>
     </div>
     <div class="panel">
-      <h4>추천 숙소 지역${base.custom ? '' : ` · ${esc(base.ko)}`}</h4>
-      <div class="areas">${c.areas.map(a => `
+      <h4>추천 숙소 지역 · ${esc(c.city)}</h4>
+      <div class="areas">${areasFor(base, ap).map(a => `
         <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
-          <div class="mini"><a href="${bk(a.q||a.n+' '+base.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${ag(a.q||a.n+' '+base.cityEn)}" target="_blank" rel="noopener">아고다</a><a href="${gh(a.q||a.n+' '+base.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
+          <div class="mini"><a href="${bk(a.q||a.n+' '+c.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${ag(a.q||a.n+' '+c.cityEn)}" target="_blank" rel="noopener">아고다</a><a href="${gh(a.q||a.n+' '+c.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
       </div>
     </div>`;
 }
