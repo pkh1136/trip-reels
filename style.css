@@ -295,6 +295,13 @@ section.block{scroll-margin-top:72px;margin-top:40px}
 .flight-times label:focus-within{border-color:var(--accent)}
 .flight-times input{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:16px;font-weight:700;min-height:34px}
 .flight-times p{flex-basis:100%;font-size:12.5px;color:var(--muted)}
+.plan-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.plan-tools p{flex-basis:100%;font-size:12.5px;color:var(--muted)}
+.tl-edit{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tl-edit button,.tl-edit select,.day-add{min-height:34px;min-width:36px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;font-weight:700}
+.tl-edit button:hover:not(:disabled),.tl-edit select:hover,.day-add:hover{border-color:var(--accent);color:var(--accent-ink)}
+.tl-edit button:disabled{opacity:.35;cursor:default}
+.day-add{width:100%;margin-top:8px;background:var(--card);border-style:dashed}
 .plan{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .day-card{background:var(--soft);border-radius:14px;padding:16px}
 .day-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
