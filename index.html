@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>트립릴스 · 여행지 영상 미리보기</title>
+<meta name="description" content="가고 싶은 여행지를 입력하면 주요 명소를 짧은 영상으로 보여주고, 항공편·호텔 검색까지 한 번에.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root{
+    --bg:#0b0f17; --bg2:#121826; --card:#161d2d; --line:#263049;
+    --text:#eef2fa; --muted:#98a3ba; --accent:#ff6b4a; --accent2:#ffb347; --ok:#4ade80;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  button,input,select{font:inherit;color:inherit}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 20px}
+
+  /* ---------- Hero ---------- */
+  .hero{position:relative;min-height:440px;display:flex;align-items:center;overflow:hidden;border-bottom:1px solid var(--line)}
+  .hero-bg{position:absolute;inset:0;background:radial-gradient(1200px 500px at 15% 0%,#ff6b4a33,transparent 60%),radial-gradient(900px 500px at 90% 100%,#3b82f633,transparent 60%),var(--bg)}
+  .hero-bg video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.2s}
+  .hero-bg video.on{opacity:.35}
+  .hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0b0f1700 30%,var(--bg) 100%)}
+  .hero .wrap{position:relative;z-index:1;width:100%;padding-top:56px;padding-bottom:48px}
+  .logo{font-weight:800;letter-spacing:-.02em;font-size:20px;display:flex;align-items:center;gap:8px;margin-bottom:36px}
+  .logo i{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-style:normal;font-size:15px}
+  h1{font-size:clamp(30px,5vw,52px);line-height:1.15;letter-spacing:-.03em;font-weight:800}
+  h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);margin-top:12px;font-size:17px}
+
+  .search{margin-top:28px;background:#ffffff0d;border:1px solid #ffffff1f;backdrop-filter:blur(12px);border-radius:22px;padding:10px;display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr .8fr auto;gap:8px}
+  .field{background:#0b0f17b3;border:1px solid var(--line);border-radius:14px;padding:8px 14px;display:flex;flex-direction:column;min-width:0}
+  .field label{font-size:11.5px;color:var(--muted);font-weight:600}
+  .field input,.field select{background:none;border:0;outline:0;font-size:15.5px;font-weight:600;padding:2px 0;width:100%;color-scheme:dark}
+  .field select option{background:var(--bg2)}
+  .field:focus-within{border-color:var(--accent)}
+  .go{background:linear-gradient(135deg,var(--accent),#ff8f4a);border:0;border-radius:14px;padding:0 26px;font-weight:700;font-size:16px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
+  .go:hover{filter:brightness(1.08);transform:translateY(-1px)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .chip{background:#ffffff0f;border:1px solid #ffffff1a;border-radius:999px;padding:6px 13px;font-size:13.5px;cursor:pointer;transition:background .15s}
+  .chip:hover{background:#ffffff21}
+
+  /* ---------- Sections ---------- */
+  main{padding:40px 0 80px}
+  .empty{text-align:center;color:var(--muted);padding:60px 0}
+  .empty b{display:block;font-size:44px;margin-bottom:8px}
+  .dest-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  .dest-head h2{font-size:34px;letter-spacing:-.02em;font-weight:800}
+  .dest-head h2 span{font-size:38px;margin-right:6px}
+  .dest-head p{color:var(--muted);margin-top:4px}
+  .facts{display:flex;gap:8px;flex-wrap:wrap}
+  .fact{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13px}
+  .fact b{display:block;font-size:11px;color:var(--muted);font-weight:600}
+  .tabs{display:flex;gap:6px;position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--line)}
+  .tab{padding:8px 16px;border-radius:999px;font-weight:600;font-size:14.5px;color:var(--muted);border:1px solid transparent}
+  .tab:hover{color:var(--text);border-color:var(--line)}
+  section.block{scroll-margin-top:70px;margin-top:36px}
+  .block-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:16px}
+  .block-title h3{font-size:22px;letter-spacing:-.01em}
+  .block-title small{color:var(--muted);font-size:13px}
+
+  /* ---------- Video grid ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+  .vcard{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--card);border:1px solid var(--line);aspect-ratio:9/13;cursor:pointer;isolation:isolate;transition:transform .2s,border-color .2s}
+  .vcard:hover{transform:translateY(-3px);border-color:#3b4767}
+  .vcard video,.vcard img.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
+  .vcard::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#0000 45%,#000000d9 100%)}
+  .vcard .skeleton{position:absolute;inset:0;z-index:-3;background:linear-gradient(100deg,#161d2d 30%,#1f2840 50%,#161d2d 70%);background-size:300% 100%;animation:sh 1.4s infinite}
+  @keyframes sh{to{background-position:-150% 0}}
+  .vcard .meta{position:absolute;left:0;right:0;bottom:0;padding:16px}
+  .vcard .meta h4{font-size:18px;font-weight:700;letter-spacing:-.01em}
+  .vcard .meta p{font-size:13px;color:#d3d9e6;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .badge{position:absolute;top:12px;left:12px;background:#000000a0;backdrop-filter:blur(6px);border-radius:999px;font-size:11.5px;padding:4px 9px;font-weight:600}
+  .badge.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.3}}
+  .next{position:absolute;top:10px;right:10px;background:#000000a0;border:0;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:14px;opacity:0;transition:opacity .2s}
+  .vcard:hover .next{opacity:1}
+  .yt{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:12.5px;font-weight:600;background:#ff000026;border:1px solid #ff00004d;border-radius:8px;padding:4px 9px}
+  .yt:hover{background:#ff000040}
+
+  /* ---------- Info cards ---------- */
+  .two{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+  .panel h4{font-size:15px;color:var(--muted);font-weight:600;margin-bottom:12px}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:10px 14px;font-size:15px}
+  .kv dt{color:var(--muted)}
+  .kv dd{font-weight:600}
+  .route{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .route .ap{font-size:30px;font-weight:800;letter-spacing:.02em}
+  .route .ap small{display:block;font-size:12px;color:var(--muted);font-weight:500;letter-spacing:0}
+  .route .line{flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 8px,transparent 8px 14px);position:relative}
+  .route .line::after{content:"✈";position:absolute;left:50%;top:50%;transform:translate(-50%,-55%);background:var(--card);padding:0 6px;color:var(--accent2)}
+  .route .dur{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:var(--muted);white-space:nowrap}
+  .links{display:grid;gap:10px}
+  .lnk{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;transition:border-color .15s,background .15s}
+  .lnk:hover{border-color:var(--accent);background:#1a2133}
+  .lnk b{font-size:15.5px}
+  .lnk span{font-size:12.5px;color:var(--muted);display:block}
+  .lnk .arr{color:var(--accent);font-weight:700}
+  .areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .area{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .area b{font-size:16px}
+  .area p{font-size:13px;color:var(--muted);margin-top:3px}
+  .area .mini{display:flex;gap:6px;margin-top:10px}
+  .area .mini a{font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+  .area .mini a:hover{border-color:var(--accent)}
+  .note{font-size:12.5px;color:var(--muted);margin-top:14px}
+
+  /* ---------- Modal ---------- */
+  .modal{position:fixed;inset:0;background:#000000e0;z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.open{display:flex}
+  .modal-box{width:min(960px,100%);background:var(--bg2);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+  .modal video{display:block;width:100%;max-height:70vh;background:#000}
+  .modal-info{padding:16px 20px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+  .modal-info h4{font-size:19px}
+  .modal-info p{font-size:13px;color:var(--muted)}
+  .modal-info .acts{display:flex;gap:8px}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .x{position:absolute;top:16px;right:20px;font-size:30px;background:none;border:0;cursor:pointer;color:#fff}
+
+  footer{border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;padding:24px 0;text-align:center}
+
+  @media (max-width:900px){
+    .search{grid-template-columns:1fr 1fr}
+    .search .field.dest{grid-column:1/-1}
+    .go{grid-column:1/-1;padding:14px}
+    .two{grid-template-columns:1fr}
+  }
+  @media (max-width:520px){
+    .wrap{padding:0 16px}
+    .grid{grid-template-columns:1fr 1fr;gap:10px}
+    .vcard .meta{padding:10px}.vcard .meta h4{font-size:15px}.vcard .meta p{display:none}
+    .dest-head h2{font-size:27px}
+    .kv{grid-template-columns:90px 1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"><video id="heroVid" muted loop playsinline></video></div>
+  <div class="wrap">
+    <div class="logo"><i>▶</i>트립릴스</div>
+    <h1>어디로 떠나고 싶으세요?<br><em>명소를 영상으로 먼저 여행하세요</em></h1>
+    <p class="sub">여행지를 입력하면 주요 관광지를 짧은 영상으로 보여드리고, 항공편·호텔 검색까지 바로 연결해 드려요.</p>
+
+    <form class="search" id="searchForm" autocomplete="off">
+      <div class="field dest">
+        <label for="q">여행지 (국가 또는 도시)</label>
+        <input id="q" list="destList" placeholder="예: 일본, 파리, 다낭, 스위스…" required>
+        <datalist id="destList"></datalist>
+      </div>
+      <div class="field">
+        <label for="from">출발</label>
+        <select id="from">
+          <option value="ICN">인천 (ICN)</option>
+          <option value="GMP">김포 (GMP)</option>
+          <option value="PUS">부산 김해 (PUS)</option>
+          <option value="CJU">제주 (CJU)</option>
+          <option value="TAE">대구 (TAE)</option>
+        </select>
+      </div>
+      <div class="field"><label for="d1">가는 날</label><input type="date" id="d1"></div>
+      <div class="field"><label for="d2">오는 날</label><input type="date" id="d2"></div>
+      <div class="field">
+        <label for="pax">인원</label>
+        <select id="pax"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+      </div>
+      <button class="go" type="submit">영상 보기 ▶</button>
+    </form>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="empty"><b>🌏</b>위에서 여행지를 입력하거나 인기 여행지를 눌러 보세요.</div>
+</main>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <button class="x" id="mClose" aria-label="닫기">×</button>
+  <div class="modal-box">
+    <video id="mVid" controls playsinline></video>
+    <div class="modal-info">
+      <div><h4 id="mTitle"></h4><p id="mCredit"></p></div>
+      <div class="acts"><a class="btn" id="mYt" target="_blank" rel="noopener">YouTube 쇼츠 더보기</a><a class="btn" id="mSrc" target="_blank" rel="noopener">원본 영상</a></div>
+    </div>
+  </div>
+</div>
+
+<footer>영상: Wikimedia Commons (각 영상의 라이선스는 원본 페이지에서 확인) · 항공·호텔 가격은 연결된 예약 사이트에서 실시간으로 확인하세요.</footer>
+
+<script>
+/* =========================================================
+   여행지 데이터 (항공 소요시간은 인천 출발 직항 기준 대략치)
+   ========================================================= */
+const DESTS = [
+  { ko:"일본", flag:"🇯🇵", aliases:["japan","도쿄","동경","오사카","교토","후쿠오카","삿포로","오키나와","tokyo","osaka","kyoto"],
+    tagline:"전통 사찰과 네온 도시가 공존하는 가까운 이웃", city:"도쿄", cityEn:"Tokyo", iata:"HND", airport:"하네다 / 나리타", flight:"약 2시간 20분",
+    airlines:"대한항공, 아시아나, 제주항공, 진에어, 피치", visa:"무비자 90일", currency:"엔 (JPY)", tz:"한국과 동일",
+    spots:[
+      {ko:"센소지", en:"Sensō-ji Asakusa", d:"도쿄에서 가장 오래된 사찰, 카미나리몬과 나카미세 거리"},
+      {ko:"시부야 스크램블", en:"Shibuya Crossing", d:"한 번에 수천 명이 건너는 세계에서 가장 바쁜 교차로"},
+      {ko:"후지산", en:"Mount Fuji", d:"일본의 상징, 가와구치코에서 보는 반영이 절경"},
+      {ko:"후시미 이나리", en:"Fushimi Inari-taisha", d:"끝없이 이어지는 붉은 도리이 터널 (교토)"},
+      {ko:"금각사", en:"Kinkaku-ji", d:"연못 위에 비치는 황금빛 누각 (교토)"},
+      {ko:"도톤보리", en:"Dotonbori Osaka", d:"글리코 간판과 길거리 음식의 오사카 번화가"}],
+    areas:[{n:"신주쿠",d:"교통 허브, 쇼핑·야경·맛집 밀집"},{n:"시부야",d:"트렌디한 쇼핑, 젊은 분위기"},{n:"긴자",d:"고급 쇼핑가, 조용하고 깔끔"},{n:"아사쿠사",d:"전통 분위기, 가성비 숙소 많음"}]},
+  { ko:"프랑스", flag:"🇫🇷", aliases:["france","파리","니스","paris","nice","프로방스"],
+    tagline:"예술과 미식, 낭만의 나라", city:"파리", cityEn:"Paris", iata:"CDG", airport:"샤를드골", flight:"약 14시간",
+    airlines:"대한항공, 아시아나, 에어프랑스", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림 (서머타임 7시간)",
+    spots:[
+      {ko:"에펠탑", en:"Eiffel Tower", d:"정각마다 반짝이는 파리의 상징"},
+      {ko:"루브르 박물관", en:"Louvre Museum pyramid", d:"모나리자와 유리 피라미드"},
+      {ko:"몽생미셸", en:"Mont-Saint-Michel", d:"밀물에 섬이 되는 바다 위 수도원"},
+      {ko:"베르사유 궁전", en:"Palace of Versailles", d:"거울의 방과 거대한 정원"},
+      {ko:"개선문·샹젤리제", en:"Arc de Triomphe Champs-Élysées", d:"파리 12개 대로가 모이는 광장"},
+      {ko:"니스 해변", en:"Nice Promenade des Anglais", d:"지중해 코트다쥐르의 푸른 해안"}],
+    areas:[{n:"마레",d:"감성 카페·편집숍, 도보 여행 최적"},{n:"생제르맹데프레",d:"클래식한 파리 감성, 안전한 편"},{n:"오페라",d:"백화점·공항버스 접근성 좋음"},{n:"에펠탑 주변(7구)",d:"뷰 맛집 호텔, 조용한 주거지"}]},
+  { ko:"이탈리아", flag:"🇮🇹", aliases:["italy","로마","베네치아","베니스","피렌체","밀라노","rome","venice","florence"],
+    tagline:"도시 전체가 박물관인 고대 문명의 땅", city:"로마", cityEn:"Rome", iata:"FCO", airport:"피우미치노", flight:"약 13시간",
+    airlines:"대한항공, 아시아나, ITA항공", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"콜로세움", en:"Colosseum Rome", d:"2천 년 전 검투사들의 원형 경기장"},
+      {ko:"트레비 분수", en:"Trevi Fountain", d:"동전을 던지면 로마에 다시 온다는 전설"},
+      {ko:"베네치아 대운하", en:"Grand Canal Venice", d:"곤돌라가 오가는 물의 도시"},
+      {ko:"피렌체 두오모", en:"Florence Cathedral", d:"르네상스의 상징, 붉은 돔"},
+      {ko:"아말피 해안", en:"Amalfi Coast Positano", d:"절벽 위 파스텔빛 마을들"},
+      {ko:"피사의 사탑", en:"Leaning Tower of Pisa", k:"tower of pisa", d:"기울어진 채 800년을 버틴 종탑"}],
+    areas:[{n:"테르미니 역 주변",d:"교통 최고, 가성비 숙소"},{n:"트라스테베레",d:"골목 맛집과 로컬 분위기"},{n:"스페인 광장",d:"쇼핑·명소 도보권, 고급 호텔"},{n:"몬티",d:"콜로세움 근처 감성 동네"}]},
+  { ko:"영국", flag:"🇬🇧", aliases:["uk","england","런던","에든버러","london","스코틀랜드"],
+    tagline:"왕실의 전통과 현대 문화가 어우러진 곳", city:"런던", cityEn:"London", iata:"LHR", airport:"히스로", flight:"약 14시간 30분",
+    airlines:"대한항공, 아시아나, 영국항공", visa:"무비자 6개월 (전자여행허가 ETA 필요)", currency:"파운드 (GBP)", tz:"한국보다 9시간 느림 (서머타임 8시간)",
+    spots:[
+      {ko:"빅벤·국회의사당", en:"Big Ben Westminster", d:"템스강변의 고딕 시계탑"},
+      {ko:"타워 브리지", en:"Tower Bridge London", d:"개폐식 다리와 런던탑"},
+      {ko:"버킹엄 궁전", en:"Buckingham Palace guard", d:"근위병 교대식"},
+      {ko:"런던 아이", en:"London Eye", d:"런던 전경을 내려다보는 대관람차"},
+      {ko:"스톤헨지", en:"Stonehenge", d:"5천 년 전 거석 유적"},
+      {ko:"에든버러 성", en:"Edinburgh Castle", d:"화산암 위에 세워진 스코틀랜드의 성"}],
+    areas:[{n:"코벤트 가든",d:"뮤지컬·맛집 중심, 어디든 도보"},{n:"사우스 켄싱턴",d:"박물관 밀집, 안전하고 우아함"},{n:"쇼디치",d:"힙한 카페·바, 젊은 분위기"},{n:"패딩턴",d:"히스로 익스프레스 직결"}]},
+  { ko:"스페인", flag:"🇪🇸", aliases:["spain","바르셀로나","마드리드","세비야","그라나다","barcelona","madrid"],
+    tagline:"가우디의 건축과 플라멩코의 열정", city:"바르셀로나", cityEn:"Barcelona", iata:"BCN", airport:"엘프라트", flight:"약 14시간",
+    airlines:"대한항공, 아시아나, 티웨이", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"사그라다 파밀리아", en:"Sagrada Família", d:"140년째 짓고 있는 가우디의 대성당"},
+      {ko:"구엘 공원", en:"Park Güell", d:"모자이크 도마뱀과 동화 같은 정원"},
+      {ko:"알함브라 궁전", en:"Alhambra Granada", d:"이슬람 건축의 정수 (그라나다)"},
+      {ko:"세비야 스페인 광장", en:"Plaza de España Seville", d:"반원형 광장과 타일 장식"},
+      {ko:"마드리드 왕궁", en:"Royal Palace of Madrid", k:"madrid", d:"유럽에서 가장 큰 왕궁 중 하나"}],
+    areas:[{n:"고딕 지구",d:"구시가 골목, 명소 도보권"},{n:"에이샴플레",d:"가우디 건축 밀집, 깔끔한 거리"},{n:"그라시아",d:"로컬 감성, 조용한 편"},{n:"바르셀로네타",d:"해변 바로 앞"}]},
+  { ko:"스위스", flag:"🇨🇭", aliases:["switzerland","취리히","인터라켄","루체른","체르마트","융프라우","zurich"],
+    tagline:"알프스 설산과 호수가 그림 같은 나라", city:"취리히", cityEn:"Zurich", iata:"ZRH", airport:"취리히", flight:"약 13시간 (직항 시즌 운항)",
+    airlines:"대한항공(시즌), 스위스항공·루프트한자(경유)", visa:"무비자 90일 (쉥겐)", currency:"스위스 프랑 (CHF)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"마테호른", en:"Matterhorn Zermatt", d:"피라미드 모양의 알프스 명봉"},
+      {ko:"융프라우요흐", en:"Jungfraujoch", d:"유럽의 지붕, 해발 3,454m 전망대"},
+      {ko:"라우터브루넨", en:"Lauterbrunnen", d:"72개의 폭포가 흐르는 계곡 마을"},
+      {ko:"루체른 카펠교", en:"Chapel Bridge Lucerne", d:"호수 위 지붕 덮인 목조 다리"},
+      {ko:"시옹성", en:"Chillon Castle", d:"레만 호수 위의 중세 성"}],
+    areas:[{n:"인터라켄",d:"융프라우 지역 거점"},{n:"루체른 구시가",d:"호수뷰, 이동 편리"},{n:"체르마트",d:"마테호른 뷰 숙소"},{n:"취리히 HB 주변",d:"입출국 일정에 편리"}]},
+  { ko:"체코", flag:"🇨🇿", aliases:["czech","프라하","체스키크룸로프","prague"],
+    tagline:"동화 속 붉은 지붕의 중세 도시", city:"프라하", cityEn:"Prague", iata:"PRG", airport:"바츨라프 하벨", flight:"약 12시간 30분",
+    airlines:"대한항공", visa:"무비자 90일 (쉥겐)", currency:"코루나 (CZK)", tz:"한국보다 8시간 느림",
+    spots:[
+      {ko:"카를교", en:"Charles Bridge Prague", d:"30개의 성인 조각상이 늘어선 다리"},
+      {ko:"프라하 성", en:"Prague Castle", d:"세계에서 가장 큰 고성 단지"},
+      {ko:"구시가 광장 천문시계", en:"Prague astronomical clock", d:"정각마다 움직이는 600년 된 시계"},
+      {ko:"체스키크룸로프", en:"Český Krumlov", d:"강이 휘감는 동화 마을"}],
+    areas:[{n:"구시가",d:"명소 도보권, 야경 산책"},{n:"말라 스트라나",d:"프라하성 아래 고즈넉한 동네"},{n:"신시가",d:"가성비, 교통 편리"}]},
+  { ko:"그리스", flag:"🇬🇷", aliases:["greece","아테네","산토리니","미코노스","athens","santorini"],
+    tagline:"신화의 유적과 에게해의 하얀 마을", city:"아테네", cityEn:"Athens", iata:"ATH", airport:"아테네", flight:"약 13시간 (경유 시 15시간+)",
+    airlines:"대한항공(시즌), 터키항공·에미레이트(경유)", visa:"무비자 90일 (쉥겐)", currency:"유로 (EUR)", tz:"한국보다 7시간 느림",
+    spots:[
+      {ko:"아크로폴리스", en:"Acropolis of Athens Parthenon", d:"파르테논 신전이 선 고대 언덕"},
+      {ko:"산토리니 이아", en:"Santorini Oia", d:"세계 3대 석양, 파란 지붕의 마을"},
+      {ko:"메테오라", en:"Meteora", d:"기암 절벽 위의 수도원"},
+      {ko:"미코노스", en:"Mykonos", d:"풍차와 하얀 골목의 섬"}],
+    areas:[{n:"플라카",d:"아크로폴리스 아래 구시가"},{n:"신타그마",d:"공항철도·교통 중심"},{n:"이아(산토리니)",d:"석양뷰 동굴 숙소"},{n:"피라(산토리니)",d:"버스 허브, 상대적 가성비"}]},
+  { ko:"튀르키예", flag:"🇹🇷", aliases:["turkey","türkiye","터키","이스탄불","카파도키아","istanbul","cappadocia"],
+    tagline:"동서양 문명의 교차로", city:"이스탄불", cityEn:"Istanbul", iata:"IST", airport:"이스탄불", flight:"약 11시간 30분",
+    airlines:"터키항공, 아시아나", visa:"무비자 90일", currency:"리라 (TRY)", tz:"한국보다 6시간 느림",
+    spots:[
+      {ko:"카파도키아 열기구", en:"Cappadocia hot air balloon", d:"기암괴석 위로 떠오르는 수백 개의 열기구"},
+      {ko:"아야 소피아", en:"Hagia Sophia", d:"1,500년 역사의 대성당이자 모스크"},
+      {ko:"블루 모스크", en:"Sultan Ahmed Mosque", d:"푸른 타일로 장식된 술탄 아흐메트 모스크"},
+      {ko:"파묵칼레", en:"Pamukkale", d:"하얀 석회 계단식 온천"},
+      {ko:"보스포루스 해협", en:"Bosphorus Istanbul", d:"유럽과 아시아를 가르는 바다"}],
+    areas:[{n:"술탄아흐메트",d:"구시가 명소 도보권"},{n:"탁심·베이오을루",d:"번화가, 맛집·야경"},{n:"카라쾨이",d:"감성 카페, 보스포루스 뷰"},{n:"괴레메(카파도키아)",d:"동굴 호텔"}]},
+  { ko:"미국", flag:"🇺🇸", aliases:["usa","america","미국","뉴욕","로스앤젤레스","la","라스베가스","샌프란시스코","new york","하와이"],
+    tagline:"대도시부터 대자연까지 스케일이 다른 여행", city:"뉴욕", cityEn:"New York", iata:"JFK", airport:"존 F. 케네디", flight:"약 14시간",
+    airlines:"대한항공, 아시아나, 델타", visa:"ESTA 필요 (90일)", currency:"달러 (USD)", tz:"한국보다 14시간 느림 (서머타임 13시간)",
+    spots:[
+      {ko:"타임스스퀘어", en:"Times Square", d:"세상의 교차로, 거대한 전광판"},
+      {ko:"자유의 여신상", en:"Statue of Liberty", d:"뉴욕항을 지키는 미국의 상징"},
+      {ko:"그랜드캐니언", en:"Grand Canyon", d:"20억 년 지층이 만든 대협곡"},
+      {ko:"금문교", en:"Golden Gate Bridge", d:"안개 속 붉은 현수교 (샌프란시스코)"},
+      {ko:"라스베이거스 스트립", en:"Las Vegas Strip", d:"화려한 카지노 호텔 거리"},
+      {ko:"나이아가라 폭포", en:"Niagara Falls", d:"북미 최대 규모의 폭포"}],
+    areas:[{n:"미드타운",d:"타임스스퀘어·브로드웨이 도보권"},{n:"로어 맨해튼",d:"월가·자유의 여신상 페리 근처"},{n:"브루클린",d:"로컬 감성, 상대적 가성비"},{n:"롱아일랜드시티",d:"맨해튼 뷰, 가성비"}]},
+  { ko:"캐나다", flag:"🇨🇦", aliases:["canada","밴쿠버","토론토","밴프","몬트리올","퀘벡","vancouver","banff"],
+    tagline:"에메랄드빛 호수와 로키산맥", city:"밴쿠버", cityEn:"Vancouver", iata:"YVR", airport:"밴쿠버", flight:"약 10시간",
+    airlines:"대한항공, 에어캐나다", visa:"eTA 필요 (6개월)", currency:"캐나다 달러 (CAD)", tz:"한국보다 17시간 느림 (서머타임 16시간)",
+    spots:[
+      {ko:"모레인 호수", en:"Moraine Lake", d:"로키의 보석 같은 청록빛 호수"},
+      {ko:"레이크 루이스", en:"Lake Louise", d:"빙하가 녹아 만든 호수와 샤토"},
+      {ko:"밴프 국립공원", en:"Banff National Park", d:"캐나다 최초의 국립공원"},
+      {ko:"올드 퀘벡", en:"Old Quebec City", d:"북미 속 작은 프랑스"},
+      {ko:"스탠리 파크", en:"Stanley Park Vancouver", k:"stanley park", d:"도심 속 거대한 숲과 해안 산책로"}],
+    areas:[{n:"다운타운",d:"쇼핑·맛집, 이동 편리"},{n:"개스타운",d:"증기시계, 감성 거리"},{n:"밴프 타운",d:"로키 여행 거점"},{n:"예일타운",d:"세련된 레스토랑과 바"}]},
+  { ko:"호주", flag:"🇦🇺", aliases:["australia","시드니","멜버른","브리즈번","케언즈","sydney","melbourne"],
+    tagline:"남반구의 햇살과 대자연", city:"시드니", cityEn:"Sydney", iata:"SYD", airport:"킹스포드 스미스", flight:"약 10시간 30분",
+    airlines:"대한항공, 아시아나, 콴타스, 젯스타", visa:"ETA 필요 (3개월)", currency:"호주 달러 (AUD)", tz:"한국보다 1시간 빠름 (서머타임 2시간)",
+    spots:[
+      {ko:"오페라 하우스", en:"Sydney Opera House", d:"조개껍데기 모양의 세계적 공연장"},
+      {ko:"그레이트 배리어 리프", en:"Great Barrier Reef", d:"우주에서도 보이는 산호초 군락"},
+      {ko:"울루루", en:"Uluru", d:"사막 한가운데 붉은 거대 바위"},
+      {ko:"12사도 바위", en:"Twelve Apostles Great Ocean Road", d:"그레이트 오션 로드의 해식 기둥"},
+      {ko:"본다이 비치", en:"Bondi Beach", d:"서퍼들의 천국"}],
+    areas:[{n:"서큘러 키",d:"오페라하우스·하버브리지 뷰"},{n:"달링하버",d:"야경, 가족 여행"},{n:"서리힐스",d:"카페·맛집 로컬 동네"},{n:"본다이",d:"해변 앞 숙소"}]},
+  { ko:"태국", flag:"🇹🇭", aliases:["thailand","방콕","푸켓","치앙마이","파타야","끄라비","bangkok","phuket"],
+    tagline:"황금 사원과 열대 해변, 미식의 천국", city:"방콕", cityEn:"Bangkok", iata:"BKK", airport:"수완나품", flight:"약 6시간",
+    airlines:"대한항공, 아시아나, 타이항공, 제주항공, 진에어", visa:"무비자 90일 (디지털 입국카드 TDAC 제출)", currency:"바트 (THB)", tz:"한국보다 2시간 느림",
+    spots:[
+      {ko:"왕궁·에메랄드 사원", en:"Grand Palace Bangkok", d:"화려함의 극치, 태국 왕실 사원"},
+      {ko:"왓 아룬", en:"Wat Arun", d:"짜오프라야 강변 새벽 사원의 야경"},
+      {ko:"피피섬", en:"Phi Phi Islands", d:"영화 '더 비치'의 에메랄드 바다"},
+      {ko:"도이수텝", en:"Doi Suthep Chiang Mai", d:"치앙마이 산 위의 황금 사원"},
+      {ko:"아유타야", en:"Ayutthaya historical park", d:"보리수 뿌리 속 불상이 있는 고대 수도"}],
+    areas:[{n:"수쿰빗",d:"BTS 역세권, 쇼핑·맛집"},{n:"실롬·사톤",d:"루프탑바, 비즈니스 지구"},{n:"카오산·람부뜨리",d:"배낭여행자 거리, 왕궁 근처"},{n:"리버사이드",d:"강변 럭셔리 호텔"}]},
+  { ko:"베트남", flag:"🇻🇳", aliases:["vietnam","다낭","하노이","호치민","나트랑","푸꾸옥","호이안","danang","hanoi"],
+    tagline:"가깝고 저렴한 휴양과 쌀국수의 나라", city:"다낭", cityEn:"Da Nang", iata:"DAD", airport:"다낭", flight:"약 4시간 30분",
+    airlines:"대한항공, 아시아나, 베트남항공, 비엣젯, 제주항공", visa:"무비자 45일", currency:"동 (VND)", tz:"한국보다 2시간 느림",
+    spots:[
+      {ko:"하롱베이", en:"Ha Long Bay", k:"long bay", d:"바다 위 2천여 개 석회암 섬"},
+      {ko:"호이안 올드타운", en:"Hoi An ancient town", k:"hoi an", d:"등불이 빛나는 강변 고도시"},
+      {ko:"골든 브릿지", en:"Golden Bridge Ba Na Hills", k:"ba na", d:"거대한 손이 받친 바나힐 다리"},
+      {ko:"하노이 구시가", en:"Hanoi Old Quarter", d:"오토바이 물결과 기찻길 마을"},
+      {ko:"푸꾸옥", en:"Phu Quoc", d:"남부의 청정 휴양 섬"}],
+    areas:[{n:"미케 비치",d:"해변 앞 리조트·호텔"},{n:"한강 주변",d:"시내 맛집·야시장"},{n:"호이안",d:"올드타운 감성 숙소"},{n:"논느억 비치",d:"럭셔리 리조트 단지"}]},
+  { ko:"대만", flag:"🇹🇼", aliases:["taiwan","타이베이","타이페이","가오슝","타이중","taipei"],
+    tagline:"야시장과 온천, 가까운 미식 여행", city:"타이베이", cityEn:"Taipei", iata:"TPE", airport:"타오위안", flight:"약 2시간 30분",
+    airlines:"대한항공, 아시아나, 중화항공, 에바항공, 티웨이", visa:"무비자 90일", currency:"대만 달러 (TWD)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"타이베이 101", en:"Taipei 101", d:"도시를 내려다보는 초고층 전망대"},
+      {ko:"지우펀", en:"Jiufen", d:"홍등이 걸린 산비탈 찻집 마을"},
+      {ko:"타이루거 협곡", en:"Taroko Gorge", d:"대리석 절벽의 대협곡"},
+      {ko:"스린 야시장", en:"Shilin Night Market", d:"대만 최대 야시장"},
+      {ko:"르웨탄", en:"Sun Moon Lake", k:"moon lake", d:"해와 달 모양의 산정 호수"}],
+    areas:[{n:"시먼딩",d:"쇼핑·먹거리, 젊은 분위기"},{n:"타이베이역",d:"공항철도·교통 중심"},{n:"중산",d:"감성 카페, 깔끔한 호텔"},{n:"신이",d:"101 주변 고급 호텔"}]},
+  { ko:"싱가포르", flag:"🇸🇬", aliases:["singapore","싱가폴"],
+    tagline:"깨끗하고 안전한 미래 도시", city:"싱가포르", cityEn:"Singapore", iata:"SIN", airport:"창이", flight:"약 6시간 30분",
+    airlines:"대한항공, 아시아나, 싱가포르항공, 스쿠트", visa:"무비자 90일 (SG Arrival Card 제출)", currency:"싱가포르 달러 (SGD)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"마리나 베이 샌즈", en:"Marina Bay Sands", d:"옥상 인피니티 풀의 랜드마크"},
+      {ko:"가든스 바이 더 베이", en:"Gardens by the Bay Supertree", d:"슈퍼트리 빛 쇼"},
+      {ko:"멀라이언 파크", en:"Merlion Park", d:"사자 머리 물고기 상"},
+      {ko:"센토사 섬", en:"Sentosa Island", d:"유니버설 스튜디오와 해변"}],
+    areas:[{n:"마리나 베이",d:"야경·명소 중심, 고급"},{n:"오차드",d:"쇼핑 거리"},{n:"클락키",d:"강변 펍·레스토랑"},{n:"부기스",d:"가성비, 교통 편리"}]},
+  { ko:"중국", flag:"🇨🇳", aliases:["china","베이징","북경","상하이","상해","장가계","beijing","shanghai"],
+    tagline:"만리장성부터 미래 도시 상하이까지", city:"베이징", cityEn:"Beijing", iata:"PEK", airport:"서우두", flight:"약 2시간",
+    airlines:"대한항공, 아시아나, 중국국제항공", visa:"무비자 입국 (기간·정책 변동, 출발 전 확인)", currency:"위안 (CNY)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"만리장성", en:"Great Wall of China", d:"산맥을 따라 굽이치는 인류 최대 건축물"},
+      {ko:"자금성", en:"Forbidden City", d:"명·청 황제의 궁궐"},
+      {ko:"상하이 와이탄", en:"The Bund Shanghai", d:"황푸강 건너 마천루 야경"},
+      {ko:"장가계", en:"Zhangjiajie", d:"영화 '아바타'의 모티브가 된 봉우리"},
+      {ko:"구이린 리강", en:"Li River Guilin", d:"수묵화 같은 카르스트 풍경"}],
+    areas:[{n:"왕푸징",d:"자금성 도보권 번화가"},{n:"싼리툰",d:"트렌디한 쇼핑·바"},{n:"첸먼",d:"전통 골목, 천안문 근처"}]},
+  { ko:"인도네시아", flag:"🇮🇩", aliases:["indonesia","발리","bali","자카르타","롬복"],
+    tagline:"신들의 섬 발리와 열대의 낭만", city:"발리", cityEn:"Bali", iata:"DPS", airport:"응우라라이", flight:"약 7시간",
+    airlines:"대한항공, 가루다인도네시아, 제주항공", visa:"도착비자 VOA (e-VOA 사전 발급 가능)", currency:"루피아 (IDR)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"따나롯 사원", en:"Tanah Lot", d:"바다 위 바위에 세워진 사원과 석양"},
+      {ko:"울루와뚜 사원", en:"Uluwatu Temple", d:"절벽 위 사원과 께짝 댄스"},
+      {ko:"뜨갈랄랑 계단식 논", en:"Tegallalang Rice Terraces", d:"우붓의 초록빛 계단 논"},
+      {ko:"보로부두르", en:"Borobudur", d:"세계 최대의 불교 사원 (자바)"},
+      {ko:"코모도 국립공원", en:"Komodo National Park", d:"코모도왕도마뱀과 핑크 비치"}],
+    areas:[{n:"스미냑",d:"비치클럽·맛집, 세련된 분위기"},{n:"우붓",d:"정글뷰 풀빌라, 힐링"},{n:"누사두아",d:"대형 리조트, 가족 여행"},{n:"짱구",d:"서핑·디지털노마드 감성"}]},
+  { ko:"필리핀", flag:"🇵🇭", aliases:["philippines","세부","보라카이","보홀","팔라완","마닐라","cebu","boracay"],
+    tagline:"투명한 바다와 7천 개의 섬", city:"세부", cityEn:"Cebu", iata:"CEB", airport:"막탄 세부", flight:"약 4시간 30분",
+    airlines:"대한항공, 아시아나, 필리핀항공, 제주항공, 진에어", visa:"무비자 30일 (eTravel 등록)", currency:"페소 (PHP)", tz:"한국보다 1시간 느림",
+    spots:[
+      {ko:"보라카이 화이트비치", en:"White Beach Boracay", k:"boracay", d:"밀가루처럼 고운 4km 백사장"},
+      {ko:"초콜릿 힐", en:"Chocolate Hills Bohol", d:"1,200여 개의 둥근 언덕 (보홀)"},
+      {ko:"엘니도", en:"El Nido Palawan", d:"석회암 절벽과 라군"},
+      {ko:"카와산 폭포", en:"Kawasan Falls", d:"캐녀닝의 성지, 옥빛 폭포"}],
+    areas:[{n:"막탄",d:"리조트 밀집, 공항 근처"},{n:"세부 시티",d:"쇼핑몰·가성비"},{n:"보라카이 스테이션 2",d:"화이트비치 중심"}]},
+  { ko:"이집트", flag:"🇪🇬", aliases:["egypt","카이로","룩소르","cairo","피라미드"],
+    tagline:"5천 년 파라오 문명을 만나는 여행", city:"카이로", cityEn:"Cairo", iata:"CAI", airport:"카이로", flight:"약 12~15시간 (주로 경유)",
+    airlines:"대한항공(시즌), 이집트항공, 에미레이트·카타르(경유)", visa:"도착비자 또는 e-Visa", currency:"이집트 파운드 (EGP)", tz:"한국보다 7시간 느림",
+    spots:[
+      {ko:"기자 피라미드", en:"Giza pyramid complex", d:"고대 7대 불가사의 중 유일하게 남은 것"},
+      {ko:"스핑크스", en:"Great Sphinx of Giza", d:"사자 몸에 사람 얼굴의 거대 석상"},
+      {ko:"아부심벨", en:"Abu Simbel", d:"람세스 2세의 거대한 암굴 신전"},
+      {ko:"카르나크 신전", en:"Karnak Temple Luxor", d:"134개의 거대 기둥이 선 신전"}],
+    areas:[{n:"기자",d:"피라미드 뷰 호텔"},{n:"자말렉",d:"나일강 섬, 조용하고 안전"},{n:"다운타운",d:"이집트 박물관 근처"}]}
+];
+
+/* =========================================================
+   Helpers
+   ========================================================= */
+// Windows는 국기 이모지를 글자(JP)로 표시하므로 국기 이미지를 사용
+const CC = {일본:"jp",프랑스:"fr",이탈리아:"it",영국:"gb",스페인:"es",스위스:"ch",체코:"cz",그리스:"gr",튀르키예:"tr",미국:"us",캐나다:"ca",호주:"au",태국:"th",베트남:"vn",대만:"tw",싱가포르:"sg",중국:"cn",인도네시아:"id",필리핀:"ph",이집트:"eg"};
+DESTS.forEach(d => d.flagImg = `<img src="https://flagcdn.com/w80/${CC[d.ko]}.png" alt="${d.flag}" style="height:.8em;width:auto;border-radius:3px;vertical-align:-0.05em">`);
+const $ = s => document.querySelector(s);
+const enc = encodeURIComponent;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => s.toLowerCase().replace(/\s+/g,'');
+function findDest(q){
+  const n = norm(q);
+  return DESTS.find(d => norm(d.ko)===n || norm(d.city)===n || d.aliases.some(a=>norm(a)===n))
+      || DESTS.find(d => n.length>=2 && (norm(d.ko).includes(n) || d.aliases.some(a=>norm(a).includes(n))));
+}
+const iso = d => d.toISOString().slice(0,10);
+const ymd = s => s.replace(/-/g,'');
+const yymmdd = s => s.slice(2).replace(/-/g,'');
+
+// 초기값: 날짜 30일 뒤부터 4박
+(() => {
+  const a = new Date(); a.setDate(a.getDate()+30);
+  const b = new Date(a); b.setDate(b.getDate()+4);
+  $('#d1').value = iso(a); $('#d2').value = iso(b); $('#d1').min = iso(new Date());
+  $('#destList').innerHTML = DESTS.map(d=>`<option value="${d.ko}">`).join('') +
+    DESTS.map(d=>`<option value="${d.city}">${d.ko}</option>`).join('');
+  $('#chips').innerHTML = ["일본","베트남","태국","프랑스","스위스","튀르키예","호주","대만","이탈리아","미국"]
+    .map(k => { const d = findDest(k); return `<button class="chip" data-q="${k}">${d.flagImg} ${k}</button>`; }).join('');
+})();
+$('#d1').addEventListener('change', () => {
+  if ($('#d2').value <= $('#d1').value){ const b = new Date($('#d1').value); b.setDate(b.getDate()+4); $('#d2').value = iso(b); }
+  $('#d2').min = $('#d1').value;
+  if (current) renderTravel(current);
+});
+['#d2','#from','#pax'].forEach(s => $(s).addEventListener('change', () => current && renderTravel(current)));
+
+/* =========================================================
+   Wikimedia Commons 영상 검색
+   ========================================================= */
+const cache = new Map();
+const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const words = t => fold(t).split(/[\s-]+/).filter(w => w.length > 3);
+// 이 단어가 제목에 있으면 그 명소 영상이 거의 확실한 고유 지명
+const UNIQUE = new Set("trevi colosseum eiffel louvre matterhorn jungfraujoch lauterbrunnen chillon stonehenge alhambra sagrada acropolis meteora mykonos cappadocia pamukkale bosphorus uluru banff borobudur komodo tegallalang uluwatu zhangjiajie jiufen taroko shilin merlion sentosa kinkaku dotonbori fushimi ayutthaya karnak kawasan boracay niagara versailles cesky guell amalfi giza buckingham hagia santorini shibuya dotonbori".split(' '));
+const termWords = s => fold(s.en).split(/[\s,-]+/).filter(w => w.length >= 3 && !['the','and'].includes(w));
+// 영상 제목이 명소와 관련 있는지 판단: 고유 지명 1개, 또는 검색어 단어 2개 이상 일치
+function relevant(s, title){
+  const t = fold(title);
+  if (s.k) return t.includes(s.k);
+  const ws = termWords(s);
+  if (ws.some(w => UNIQUE.has(w) && t.includes(w))) return true;
+  return ws.filter(w => t.includes(w)).length >= Math.min(2, ws.length);
+}
+const retryTerm = s => s.k || termWords(s).find(w => UNIQUE.has(w)) || termWords(s).slice(0,2).join(' ');
+async function fetchVideos(term, limit=6){
+  const key = term+'|'+limit;
+  if (cache.has(key)) return cache.get(key);
+  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'
+    + '&generator=search&gsrnamespace=6&gsrlimit='+limit+'&gsrsearch='+enc('filetype:video '+term)
+    + '&prop=videoinfo&viprop=url|mime|size|derivatives&viurlwidth=640';
+  const p = fetch(url).then(r=>r.json()).then(j => {
+    const pages = Object.values(j.query?.pages || {}).sort((a,b)=>(a.index||0)-(b.index||0));
+    return pages.map(pg => {
+      const v = pg.videoinfo?.[0]; if (!v) return null;
+      const ders = (v.derivatives||[]).filter(x => /webm|mp4/.test(x.type));
+      const pick = h => ders.find(x => x.transcodekey && x.transcodekey.startsWith(h));
+      const small = pick('480p') || pick('360p') || pick('720p') || pick('240p');
+      const big = pick('1080p') || pick('720p') || small;
+      if (!small && v.size > 40e6) return null;           // 트랜스코드 없고 큰 원본은 제외
+      return { title: pg.title.replace(/^File:/,'').replace(/\.\w+$/,'').replace(/_/g,' '),
+               src: (small||v).src || v.url, hd: (big||v).src || v.url,
+               poster: v.thumburl, page: v.descriptionurl };
+    }).filter(Boolean)
+      // 제목에 검색어 단어가 많이 들어간 영상을 우선 (검색 결과가 느슨하게 매칭되는 문제 보정)
+      .map((v,i) => ({v, i, s: words(term).filter(w => fold(v.title).includes(w)).length}))
+      .sort((a,b) => b.s-a.s || a.i-b.i).map(x => x.v);
+  }).catch(() => []);
+  cache.set(key, p);
+  return p;
+}
+async function wikiImage(term){
+  try{
+    const r = await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=1&gsrsearch='+enc(term)+'&prop=pageimages&piprop=thumbnail&pithumbsize=700');
+    const j = await r.json(); const pg = Object.values(j.query?.pages||{})[0];
+    return pg?.thumbnail?.source || null;
+  }catch{ return null; }
+}
+
+/* =========================================================
+   렌더링
+   ========================================================= */
+let current = null;
+const ytLink = name => 'https://www.youtube.com/results?search_query='+enc(name+' 여행 shorts');
+
+function render(q){
+  const d = findDest(q);
+  current = d || { ko:q, flag:"📍", custom:true, city:q, cityEn:q, tagline:"검색한 여행지의 영상을 모아봤어요",
+    spots:null, areas:[{n:q+" 중심가",d:"주요 명소 접근성이 좋은 지역"}] };
+  const c = current;
+  history.replaceState(null,'','#'+enc(c.ko));
+  $('#main').innerHTML = `
+    <div class="dest-head">
+      <div><h2><span>${c.flagImg||c.flag}</span>${esc(c.ko)}</h2><p>${esc(c.tagline)}</p></div>
+      ${c.custom ? '' : `<div class="facts">
+        <div class="fact"><b>비자</b>${esc(c.visa)}</div>
+        <div class="fact"><b>통화</b>${esc(c.currency)}</div>
+        <div class="fact"><b>시차</b>${esc(c.tz)}</div></div>`}
+    </div>
+    <nav class="tabs"><a class="tab" href="#spots">🎬 명소 영상</a><a class="tab" href="#flights">✈️ 항공편</a><a class="tab" href="#hotels">🏨 호텔</a></nav>
+    <section class="block" id="spots">
+      <div class="block-title"><h3>🎬 주요 명소 숏폼</h3><small>카드에 마우스를 올리면 다른 영상 · 클릭하면 크게 보기</small></div>
+      <div class="grid" id="grid"></div>
+    </section>
+    <section class="block" id="flights"></section>
+    <section class="block" id="hotels"></section>`;
+  renderTravel(c);
+  renderSpots(c);
+  $('#main').scrollIntoView({behavior:'smooth'});
+}
+
+async function renderSpots(c){
+  const grid = $('#grid');
+  let spots = c.spots;
+  if (!spots){ // 데이터에 없는 여행지: Commons에서 직접 검색
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">영상을 찾는 중…</div>';
+    const vids = await fetchVideos(c.ko, 12);
+    if (!vids.length){ grid.innerHTML = `<div class="empty" style="grid-column:1/-1">'${esc(c.ko)}' 영상을 찾지 못했어요. 영문 지명(예: Bali, Prague)으로 검색하거나 <a class="yt" href="${ytLink(c.ko)}" target="_blank" rel="noopener">YouTube 쇼츠에서 보기</a></div>`; return; }
+    spots = vids.map(v => ({ko:v.title, en:null, d:'', preset:[v]}));
+  }
+  grid.innerHTML = spots.map((s,i) => `
+    <article class="vcard" data-i="${i}">
+      <div class="skeleton"></div>
+      <span class="badge">불러오는 중</span>
+      <button class="next" title="다른 영상" aria-label="다른 영상">⟳</button>
+      <div class="meta"><h4>${esc(s.ko)}</h4>${s.d?`<p>${esc(s.d)}</p>`:''}
+        <a class="yt" href="${ytLink(s.en||s.ko)}" target="_blank" rel="noopener">▶ 쇼츠 더보기</a></div>
+    </article>`).join('');
+  const cards = [...grid.children];
+  cards.forEach((el,i) => { el._spot = spots[i]; el._idx = 0; });
+  cards.forEach(el => {
+    el.querySelector('.yt').addEventListener('click', e => e.stopPropagation());
+    el.querySelector('.next').addEventListener('click', e => { e.stopPropagation(); cycle(el); });
+    el.addEventListener('click', () => openModal(el));
+    el.addEventListener('mouseenter', () => el._v && el._v.play().catch(()=>{}));
+  });
+  // 화면에 보일 때 로딩 + 재생, 벗어나면 정지
+  const io = new IntersectionObserver(ents => ents.forEach(en => {
+    const el = en.target;
+    if (en.isIntersecting){ if (!el._loaded) loadCard(el); else el._v && el._v.play().catch(()=>{}); }
+    else el._v && el._v.pause();
+  }), {threshold:.35});
+  cards.forEach(el => io.observe(el));
+}
+
+async function loadCard(el){
+  el._loaded = true;
+  const s = el._spot;
+  if (s.preset) el._vids = s.preset;
+  else {
+    // 제목에 명소의 핵심 단어가 없는 영상(엉뚱한 검색 결과)은 제외
+    const ok = v => relevant(s, v.title);
+    el._vids = (await fetchVideos(s.en, 8)).filter(ok);
+    if (!el._vids.length) el._vids = (await fetchVideos(retryTerm(s), 8)).filter(ok); // 핵심 단어로 재검색
+  }
+  if (!el.isConnected) return;
+  const badge = el.querySelector('.badge');
+  if (!el._vids.length){
+    const img = await wikiImage(s.en || s.ko);
+    el.querySelector('.skeleton')?.remove();
+    if (img) el.insertAdjacentHTML('afterbegin', `<img class="poster" src="${img}" alt="">`);
+    badge.textContent = '사진 · 쇼츠는 YouTube에서'; el.querySelector('.next').remove();
+    el._noVideo = true; return;
+  }
+  if (el._vids.length < 2) el.querySelector('.next').remove();
+  setVideo(el, 0);
+  // 첫 카드 영상을 히어로 배경으로
+  if (el.dataset.i === '0'){ const hv = $('#heroVid'); hv.src = el._vids[0].src; hv.oncanplay = () => { hv.classList.add('on'); hv.play().catch(()=>{}); }; }
+}
+
+function setVideo(el, idx){
+  const v = el._vids[idx]; el._idx = idx;
+  el._v?.remove();
+  const vid = document.createElement('video');
+  Object.assign(vid, { muted:true, loop:true, playsInline:true, preload:'metadata', poster:v.poster||'', src:v.src });
+  vid.setAttribute('muted',''); vid.setAttribute('playsinline','');
+  el.prepend(vid); el._v = vid;
+  const badge = el.querySelector('.badge');
+  badge.textContent = `영상 ${idx+1}/${el._vids.length}`;
+  vid.addEventListener('playing', () => { badge.classList.add('live'); el.querySelector('.skeleton')?.remove(); }, {once:true});
+  vid.addEventListener('loadeddata', () => el.querySelector('.skeleton')?.remove(), {once:true});
+  vid.addEventListener('error', () => { if (idx+1 < el._vids.length) setVideo(el, idx+1); });
+  vid.play().catch(()=>{});
+}
+const cycle = el => el._vids && setVideo(el, (el._idx+1) % el._vids.length);
+
+function openModal(el){
+  const s = el._spot;
+  if (el._noVideo || !el._vids){ window.open(ytLink(s.en||s.ko), '_blank', 'noopener'); return; }
+  const v = el._vids[el._idx];
+  const m = $('#mVid'); m.poster = v.poster||''; m.src = v.hd; m.muted = false; m.play().catch(()=>{});
+  $('#mTitle').textContent = s.ko;
+  $('#mCredit').textContent = v.title + ' · Wikimedia Commons';
+  $('#mSrc').href = v.page; $('#mYt').href = ytLink(s.en||s.ko);
+  $('#modal').classList.add('open');
+}
+function closeModal(){ $('#modal').classList.remove('open'); const m=$('#mVid'); m.pause(); m.removeAttribute('src'); m.load(); }
+$('#mClose').onclick = closeModal;
+$('#modal').addEventListener('click', e => { if (e.target.id==='modal') closeModal(); });
+addEventListener('keydown', e => e.key==='Escape' && closeModal());
+
+/* ---------- 항공·호텔 ---------- */
+function renderTravel(c){
+  const from = $('#from').value, fromName = $('#from').selectedOptions[0].text.split(' (')[0];
+  const d1 = $('#d1').value, d2 = $('#d2').value, pax = $('#pax').value;
+  const to = c.iata;
+  const nights = Math.max(1, Math.round((new Date(d2)-new Date(d1))/864e5));
+
+  const gf = 'https://www.google.com/travel/flights?hl=ko&curr=KRW&q=' + enc(`Flights to ${to||c.cityEn} from ${from} on ${d1} through ${d2} ${pax} adults`);
+  const sky = to ? `https://www.skyscanner.co.kr/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/${yymmdd(d1)}/${yymmdd(d2)}/?adultsv2=${pax}&cabinclass=economy`
+                 : `https://www.skyscanner.co.kr/`;
+  const nv = to ? `https://flight.naver.com/flights/international/${from}-${to}-${ymd(d1)}/${to}-${from}-${ymd(d2)}?adult=${pax}&fareType=Y`
+                : `https://flight.naver.com/`;
+
+  $('#flights').innerHTML = `
+    <div class="block-title"><h3>✈️ 항공편</h3><small>${esc(fromName)} → ${esc(c.city)} · ${d1} ~ ${d2} · 성인 ${pax}명</small></div>
+    <div class="two">
+      <div class="panel">
+        <h4>노선 정보</h4>
+        <div class="route">
+          <div class="ap">${from}<small>${esc(fromName)}</small></div>
+          <div class="line">${c.flight?`<span class="dur">${esc(c.flight)}</span>`:''}</div>
+          <div class="ap">${to||'✈'}<small>${esc(c.city)}</small></div>
+        </div>
+        ${c.custom ? `<p class="note">이 여행지는 상세 노선 정보가 없어요. 오른쪽 사이트에서 공항을 선택해 검색해 주세요.</p>` : `
+        <dl class="kv">
+          <dt>도착 공항</dt><dd>${esc(c.airport)} (${to})</dd>
+          <dt>비행 시간</dt><dd>${esc(c.flight)}${from!=='ICN'?' <small style="color:var(--muted);font-weight:400">(인천 기준)</small>':''}</dd>
+          <dt>주요 항공사</dt><dd>${esc(c.airlines)}</dd>
+          <dt>입국</dt><dd>${esc(c.visa)}</dd>
+        </dl>`}
+        <p class="note">※ 비행시간은 직항 기준 대략치이며, 비자·입국 정책은 출발 전 외교부 해외안전여행에서 꼭 확인하세요.</p>
+      </div>
+      <div class="links">
+        <a class="lnk" href="${gf}" target="_blank" rel="noopener"><div><b>Google 항공편</b><span>가격 추이·최저가 날짜 그래프</span></div><span class="arr">검색 →</span></a>
+        <a class="lnk" href="${sky}" target="_blank" rel="noopener"><div><b>스카이스캐너</b><span>항공사·여행사 가격 한 번에 비교</span></div><span class="arr">검색 →</span></a>
+        <a class="lnk" href="${nv}" target="_blank" rel="noopener"><div><b>네이버 항공권</b><span>국내 여행사 특가·원화 결제</span></div><span class="arr">검색 →</span></a>
+      </div>
+    </div>`;
+
+  const bk = area => `https://www.booking.com/searchresults.ko.html?ss=${enc(area)}&checkin=${d1}&checkout=${d2}&group_adults=${pax}&no_rooms=1&lang=ko`;
+  const ag = area => `https://www.agoda.com/ko-kr/search?textToSearch=${enc(area)}&checkIn=${d1}&los=${nights}&adults=${pax}&rooms=1`;
+  const gh = area => `https://www.google.com/travel/search?hl=ko&curr=KRW&q=${enc(area+' hotels')}`;
+  $('#hotels').innerHTML = `
+    <div class="block-title"><h3>🏨 호텔</h3><small>${esc(c.city)} · ${nights}박 · 성인 ${pax}명</small></div>
+    <div class="links" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:16px">
+      <a class="lnk" href="${bk(c.cityEn)}" target="_blank" rel="noopener"><div><b>부킹닷컴</b><span>무료 취소 옵션 많음</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${ag(c.cityEn)}" target="_blank" rel="noopener"><div><b>아고다</b><span>아시아 숙소 특가</span></div><span class="arr">→</span></a>
+      <a class="lnk" href="${gh(c.cityEn)}" target="_blank" rel="noopener"><div><b>Google 호텔</b><span>지도로 위치·가격 비교</span></div><span class="arr">→</span></a>
+    </div>
+    <div class="panel">
+      <h4>추천 숙소 지역</h4>
+      <div class="areas">${c.areas.map(a => `
+        <div class="area"><b>${esc(a.n)}</b><p>${esc(a.d)}</p>
+          <div class="mini"><a href="${bk(a.n+' '+c.cityEn)}" target="_blank" rel="noopener">부킹닷컴</a><a href="${gh(a.n+' '+c.city)}" target="_blank" rel="noopener">Google 호텔</a></div></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* ---------- 이벤트 ---------- */
+$('#searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('#q').value.trim(); if (q) render(q); });
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b){ $('#q').value = b.dataset.q; render(b.dataset.q); } });
+if (location.hash.length > 1){ const q = decodeURIComponent(location.hash.slice(1)); if (!['spots','flights','hotels'].includes(q)){ $('#q').value = q; render(q); } }
+</script>
+</body>
+</html>
