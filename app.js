@@ -57,13 +57,30 @@ DESTS.forEach(d => {
 });
 if (EN) localizeData(DESTS);
 const POPULAR = ["일본", "베트남", "태국", "대만", "홍콩", "프랑스", "스위스", "미국"];
+// 나라 정보와 사정이 다른 공항: 괌은 '미국'에 속하지만 시차·입국·계절·팁이 다름 (입국 조건은 2026-11 확인)
+const AP_FACTS = {
+  GUM: {
+    tagline: tx('비행 4시간대의 가까운 태평양 휴양섬', 'A Pacific island getaway about four and a half hours away'),
+    airlines: tx('대한항공 외 (운항편은 예약 사이트에서 확인)', 'Korean Air and others (check current flights)'),
+    visa: tx('무비자 45일 (출발 전 Guam-CNMI ETA 신청) · ESTA는 90일', 'Visa-free 45 days (apply for the Guam-CNMI ETA before flying) · 90 days with ESTA'),
+    tz: tx('한국보다 1시간 빠름', '1 h ahead of Korea'),
+    best: [12, 1, 2, 3, 4, 5], season: tx('건기 12~5월', 'Dry season Dec–May'),
+    tip: tx('10~15% (서비스료 포함 여부 확인)', '10–15% (check if service is included)'),
+    tips: tx(['Guam-CNMI ETA 또는 ESTA는 출발 전에 미리 신청', '이동은 렌터카나 투몬 지역 셔틀버스', '자외선이 강해 자외선 차단제 필수'],
+      ['Apply for the Guam-CNMI ETA or ESTA before you fly', 'Get around by rental car or the Tumon shuttle buses', 'The sun is strong, so wear sunscreen'])
+  }
+};
+// 지금 보는 공항 기준의 여행 정보 (공항별 예외가 있으면 덮어씀)
+const factsOf = (d, ap) => ({ ...d, ...d.info, ...AP_FACTS[ap?.code] });
+// 공항 이름에 있는 지명(괌, 제네바, 호놀룰루 …)으로도 찾음. '(김포 출발)'은 출발지라 제외
+const apPlaces = a => { const name = (a.koName || a.name).replace('(김포 출발)', ''); return [name, ...name.split(/[\s()·]+/), a.city || '', ...a.name.split(',')].filter(Boolean).map(norm); };
 const destByKo = ko => DESTS.find(d => d.ko === ko);
 const destBySlug = s => DESTS.find(d => d.slug === s);
 function findDest(q) {
   const n = norm(q);
   if (!n) return null;
   return DESTS.find(d => norm(d.ko) === n || norm(d.name) === n || norm(d.city) === n || d.aliases.some(a => norm(a) === n)
-                      || d.aps.some(a => norm(a.code) === n || norm(a.en) === n))
+                      || d.aps.some(a => norm(a.code) === n || norm(a.en) === n || apPlaces(a).includes(n)))
       || DESTS.find(d => n.length >= 2 && (norm(d.ko).includes(n) || norm(d.name).includes(n) || d.aliases.some(a => norm(a).includes(n))));
 }
 // 도시 이름·공항코드로 검색했으면 그 도시의 공항을 기본 선택
@@ -726,7 +743,7 @@ function render(q, word, opts = {}) {
     <div class="dest-head">
       <div>
         <h2>${c.flagImg}${esc(c.name)}<span id="seasonBadge"></span></h2>
-        <p>${esc(c.tagline)}</p>
+        <p id="destTagline">${esc(c.tagline)}</p>
       </div>
       <div class="head-acts">
         ${c.custom ? '' : '<button type="button" class="btn" id="tripSave"></button>'}
@@ -734,13 +751,13 @@ function render(q, word, opts = {}) {
       </div>
     </div>
     ${c.custom ? '' : `<div class="facts">
-      <div class="fact"><span class="fi">🛂</span><div><b>${tx('입국', 'Entry (Korean passport)')}</b>${esc(c.visa)}</div></div>
+      <div class="fact"><span class="fi">🛂</span><div><b>${tx('입국', 'Entry (Korean passport)')}</b><span id="fVisa">${esc(c.visa)}</span></div></div>
       <div class="fact fx" id="fx"><span class="fi">💱</span><div><b>${tx('환율', 'Exchange rate')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
       <div class="fact" id="wxFact"><span class="fi">🌤</span><div><b>${tx('날씨', 'Weather')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
-      <div class="fact"><span class="fi">🕐</span><div><b>${tx('시차', 'Time difference')}</b>${esc(c.tz)}</div></div>
+      <div class="fact"><span class="fi">🕐</span><div><b>${tx('시차', 'Time difference')}</b><span id="fTz">${esc(c.tz)}</span></div></div>
       ${I.plug ? `<div class="fact ${I.ok ? 'good' : 'warn'}"><span class="fi">🔌</span><div><b>${tx('플러그 · 전압', 'Plug · voltage')}</b>${esc(I.plug)} ${esc(I.volt)}${I.ok ? tx(' · 그대로 사용', ' · Korean plugs fit') : tx(' · 변환 플러그 필요', ' · adapter needed for Korean plugs')}</div></div>` : ''}
       ${I.lang ? `<div class="fact"><span class="fi">🗣</span><div><b>${tx('언어', 'Language')}</b>${esc(I.lang)}</div></div>` : ''}
-      ${I.tip ? `<div class="fact"><span class="fi">💁</span><div><b>${tx('팁', 'Tipping')}</b>${esc(I.tip)}</div></div>` : ''}
+      ${I.tip ? `<div class="fact"><span class="fi">💁</span><div><b>${tx('팁', 'Tipping')}</b><span id="fTip">${esc(I.tip)}</span></div></div>` : ''}
     </div>`}
     <nav class="tabs" aria-label="${tx('여행지 메뉴', 'Destination menu')}">${SECTIONS.filter(([id]) => !(c.custom && ['plan'].includes(id)))
       .map(([id, l]) => `<a class="tab" href="#sec-${id}" data-sec="${id}">${l}</a>`).join('')}</nav>
@@ -1173,7 +1190,9 @@ async function showWeather() {
 
 /* ---------- 여행 정보: 날씨 · 추천 시기 · 환율 계산기 · 예산 · 꿀팁 ---------- */
 function renderInfo() {
-  const c = current, I = c.info, box = $('#sec-info'); if (!box) return;
+  const c = current, I = c.custom ? c.info : factsOf(c, curAp), box = $('#sec-info'); if (!box) return;
+  // 화면 위쪽 요약도 지금 공항 기준으로 (공항을 바꿔도 다시 그려지도록 여기서)
+  if (!c.custom) [['#destTagline', I.tagline], ['#fVisa', I.visa], ['#fTz', I.tz], ['#fTip', I.tip]].forEach(([id, v]) => { const el = $(id); if (el) el.textContent = v; });
   const tripM = parseD(S.d1).getMonth() + 1;
   box.innerHTML = `
     <div class="block-title"><h3>📋 ${tx('여행 정보', 'Travel info')}</h3><small>${esc(tx(`${cityOf(curAp)} 기준`, `for ${cityOf(curAp)}`))}</small></div>
@@ -1710,8 +1729,8 @@ function renderTravel() {
         <dl class="kv">
           <dt>${tx('도착 공항', 'Airport')}</dt><dd>${esc(ap.name)} (${to})</dd>
           <dt>${tx('비행 시간', 'Flight time')}</dt><dd>${esc(ap.time)}${from !== 'ICN' ? ` <small class="muted">${tx('(인천 기준)', '(from Incheon)')}</small>` : ''}</dd>
-          <dt>${tx('주요 항공사', 'Airlines')}</dt><dd>${esc(c.airlines)}</dd>
-          <dt>${tx('입국', 'Entry')}</dt><dd>${esc(c.visa)}</dd>
+          <dt>${tx('주요 항공사', 'Airlines')}</dt><dd>${esc(factsOf(c, ap).airlines)}</dd>
+          <dt>${tx('입국', 'Entry')}</dt><dd>${esc(factsOf(c, ap).visa)}</dd>
         </dl>`}
         <p class="note">${tx('※ 비행시간은 대략치예요. ', 'Flight times are approximate. ')}${from === 'GMP' ? tx('김포 출발 국제선은 일본·대만·중국 일부 노선만 있어요. ', 'Gimpo has only a few international routes (Japan, Taiwan, China). ') : ''}${tx('비자·입국 정책은 출발 전에 꼭 확인하세요.', 'Entry rules shown are for Korean passports; check them before you go.')}</p>
       </div>
@@ -1758,7 +1777,7 @@ function renderMore() {
   const items = [
     ['🎟', '투어 · 입장권', '마이리얼트립', mrt(city), 'myrealtrip'],
     ['🎢', '투어 · 액티비티', '클룩', aff('klook', 'https://www.klook.com/ko/search/result/?query=' + enc(en)), 'klook'],
-    ['📶', 'eSIM · 유심', '마이리얼트립', mrt(`${c.custom ? city : c.ko} eSIM`), 'myrealtrip'],
+    ['📶', 'eSIM · 유심', '마이리얼트립', mrt(`${c.custom || AP_FACTS[curAp.code] ? city : c.ko} eSIM`), 'myrealtrip'],
     ['🚗', '해외 렌터카', '마이리얼트립', mrt(`${city} 렌터카`), 'myrealtrip'],
     ['🛡', '여행자보험', '마이리얼트립', mrt('여행자보험'), 'myrealtrip'],
     ['🍜', '맛집 · 지도', 'Google 지도', `https://www.google.com/maps/search/?api=1&query=${enc('restaurants in ' + en)}`],
@@ -1770,7 +1789,7 @@ function renderMore() {
   const itemsEn = [
     ['🎟', 'Tours & tickets', 'Klook', klook(en), 'klook'],
     ['🎢', 'Experiences', 'GetYourGuide', 'https://www.getyourguide.com/s/?q=' + enc(en)],
-    ['📶', 'eSIM · SIM', 'Klook', klook(`${c.custom ? en : c.name} eSIM`), 'klook'],
+    ['📶', 'eSIM · SIM', 'Klook', klook(`${c.custom || AP_FACTS[curAp.code] ? en : c.name} eSIM`), 'klook'],
     ['🚗', 'Car rental', 'Klook', klook(`${en} car rental`), 'klook'],
     ['🍜', 'Restaurants', 'Google Maps', `https://www.google.com/maps/search/?api=1&query=${enc('restaurants in ' + en)}`],
     ['💬', 'Travel vlogs', 'YouTube', 'https://www.youtube.com/results?search_query=' + enc(en + ' travel vlog')]
