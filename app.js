@@ -72,6 +72,38 @@ const AP_FACTS = {
 };
 // 지금 보는 공항 기준의 여행 정보 (공항별 예외가 있으면 덮어씀)
 const factsOf = (d, ap) => ({ ...d, ...d.info, ...AP_FACTS[ap?.code] });
+// 시차는 공항의 시간대(IANA)로 여행 날짜 기준 계산. 나라 안에서 시간대가 다른 공항만 따로 적음
+const COUNTRY_ZONE = {
+  일본: 'Asia/Tokyo', 프랑스: 'Europe/Paris', 이탈리아: 'Europe/Rome', 영국: 'Europe/London', 스페인: 'Europe/Madrid', 스위스: 'Europe/Zurich', 체코: 'Europe/Prague',
+  그리스: 'Europe/Athens', 튀르키예: 'Europe/Istanbul', 미국: 'America/New_York', 캐나다: 'America/Vancouver', 호주: 'Australia/Sydney', 태국: 'Asia/Bangkok',
+  베트남: 'Asia/Ho_Chi_Minh', 대만: 'Asia/Taipei', 싱가포르: 'Asia/Singapore', 중국: 'Asia/Shanghai', 인도네시아: 'Asia/Makassar', 필리핀: 'Asia/Manila',
+  이집트: 'Africa/Cairo', 홍콩: 'Asia/Hong_Kong', 말레이시아: 'Asia/Kuala_Lumpur', 라오스: 'Asia/Vientiane', 몽골: 'Asia/Ulaanbaatar', 인도: 'Asia/Kolkata',
+  몰디브: 'Indian/Maldives', 아랍에미리트: 'Asia/Dubai', 독일: 'Europe/Berlin', 오스트리아: 'Europe/Vienna', 헝가리: 'Europe/Budapest', 크로아티아: 'Europe/Zagreb',
+  네덜란드: 'Europe/Amsterdam', 포르투갈: 'Europe/Lisbon', 아이슬란드: 'Atlantic/Reykjavik', 노르웨이: 'Europe/Oslo', 뉴질랜드: 'Pacific/Auckland',
+  멕시코: 'America/Mexico_City', 페루: 'America/Lima'
+};
+const AP_ZONE = {
+  LAX: 'America/Los_Angeles', SFO: 'America/Los_Angeles', LAS: 'America/Los_Angeles', SEA: 'America/Los_Angeles', HNL: 'Pacific/Honolulu', GUM: 'Pacific/Guam',
+  YYZ: 'America/Toronto', YYC: 'America/Edmonton', MEL: 'Australia/Melbourne', BNE: 'Australia/Brisbane', CNS: 'Australia/Brisbane', CGK: 'Asia/Jakarta', CUN: 'America/Cancun'
+};
+// 그 시각에 해당 시간대가 UTC보다 몇 분 빠른지
+function utcOffset(zone, date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+    .formatToParts(date).map(x => [x.type, +x.value]));
+  return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - date.getTime()) / 6e4);
+}
+// '한국보다 13시간 느림 (서머타임)' 형식. 시간대를 알 수 없는 브라우저에서는 데이터의 설명을 그대로
+function timeDiff(d, ap, day) {
+  try {
+    const zone = AP_ZONE[ap.code] || COUNTRY_ZONE[d.ko], at = new Date(`${day}T12:00:00Z`), off = utcOffset(zone, at);
+    const year = day.slice(0, 4), standard = Math.min(...['01', '07'].map(m => utcOffset(zone, new Date(`${year}-${m}-01T12:00:00Z`))));
+    const diff = off - utcOffset('Asia/Seoul', at), h = Math.floor(Math.abs(diff) / 60), min = Math.abs(diff) % 60;
+    const summer = off > standard ? tx(' (서머타임)', ' (daylight saving)') : '';
+    if (!diff) return tx('한국과 동일', 'Same as Korea') + summer;
+    const span = [h && tx(`${h}시간`, `${h} h`), min && tx(`${min}분`, `${min} min`)].filter(Boolean).join(' ');
+    return tx(`한국보다 ${span} ${diff > 0 ? '빠름' : '느림'}`, `${span} ${diff > 0 ? 'ahead of' : 'behind'} Korea`) + summer;
+  } catch { return factsOf(d, ap).tz; }
+}
 // 공항 이름에 있는 지명(괌, 제네바, 호놀룰루 …)으로도 찾음. '(김포 출발)'은 출발지라 제외
 const apPlaces = a => { const name = (a.koName || a.name).replace('(김포 출발)', ''); return [name, ...name.split(/[\s()·]+/), a.city || '', ...a.name.split(',')].filter(Boolean).map(norm); };
 const destByKo = ko => DESTS.find(d => d.ko === ko);
@@ -754,7 +786,7 @@ function render(q, word, opts = {}) {
       <div class="fact"><span class="fi">🛂</span><div><b>${tx('입국', 'Entry (Korean passport)')}</b><span id="fVisa">${esc(c.visa)}</span></div></div>
       <div class="fact fx" id="fx"><span class="fi">💱</span><div><b>${tx('환율', 'Exchange rate')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
       <div class="fact" id="wxFact"><span class="fi">🌤</span><div><b>${tx('날씨', 'Weather')}</b>${tx('불러오는 중…', 'Loading…')}</div></div>
-      <div class="fact"><span class="fi">🕐</span><div><b>${tx('시차', 'Time difference')}</b><span id="fTz">${esc(c.tz)}</span></div></div>
+      <div class="fact"><span class="fi">🕐</span><div><b>${tx('시차 · 여행일 기준', 'Time difference on your dates')}</b><span id="fTz"></span></div></div>
       ${I.plug ? `<div class="fact ${I.ok ? 'good' : 'warn'}"><span class="fi">🔌</span><div><b>${tx('플러그 · 전압', 'Plug · voltage')}</b>${esc(I.plug)} ${esc(I.volt)}${I.ok ? tx(' · 그대로 사용', ' · Korean plugs fit') : tx(' · 변환 플러그 필요', ' · adapter needed for Korean plugs')}</div></div>` : ''}
       ${I.lang ? `<div class="fact"><span class="fi">🗣</span><div><b>${tx('언어', 'Language')}</b>${esc(I.lang)}</div></div>` : ''}
       ${I.tip ? `<div class="fact"><span class="fi">💁</span><div><b>${tx('팁', 'Tipping')}</b><span id="fTip">${esc(I.tip)}</span></div></div>` : ''}
@@ -1192,7 +1224,7 @@ async function showWeather() {
 function renderInfo() {
   const c = current, I = c.custom ? c.info : factsOf(c, curAp), box = $('#sec-info'); if (!box) return;
   // 화면 위쪽 요약도 지금 공항 기준으로 (공항을 바꿔도 다시 그려지도록 여기서)
-  if (!c.custom) [['#destTagline', I.tagline], ['#fVisa', I.visa], ['#fTz', I.tz], ['#fTip', I.tip]].forEach(([id, v]) => { const el = $(id); if (el) el.textContent = v; });
+  if (!c.custom) [['#destTagline', I.tagline], ['#fVisa', I.visa], ['#fTz', timeDiff(c, curAp, S.d1)], ['#fTip', I.tip]].forEach(([id, v]) => { const el = $(id); if (el) el.textContent = v; });
   const tripM = parseD(S.d1).getMonth() + 1;
   box.innerHTML = `
     <div class="block-title"><h3>📋 ${tx('여행 정보', 'Travel info')}</h3><small>${esc(tx(`${cityOf(curAp)} 기준`, `for ${cityOf(curAp)}`))}</small></div>

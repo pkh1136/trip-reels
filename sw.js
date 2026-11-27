@@ -1,5 +1,5 @@
 /* 떠날지도 서비스 워커: 앱 화면은 오프라인에서도 열리게 캐시, 데이터(영상·환율·날씨)는 항상 네트워크 */
-const CACHE = 'trip-reels-v18';
+const CACHE = 'trip-reels-v19';
 const SHELL = ['./', './index.html', './style.css', './app.js', './data.js', './photos.js', './spotinfo.js', './data-en.js', './data-en-spots.js', './data-en-places.js', './lang.js', './config.js', './icon.svg', './icon-192.png', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
